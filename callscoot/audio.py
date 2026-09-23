@@ -11,6 +11,7 @@ Two backends:
 import array
 import math
 import os
+import select
 import shutil
 import subprocess
 import tempfile
@@ -164,6 +165,21 @@ def _record_cmd(cfg, source, rate):
             "--channels", "1", "--target", source, "-"]
 
 
+def _read_chunk(stream, n, timeout):
+    """Bytes from a capture pipe, b'' on EOF, None when nothing arrived.
+
+    stdout.read() waits for a full chunk. A stalled SCO link never delivers
+    one, so the utterance clock below it never runs and arecord stays open
+    after the caller is gone.
+    """
+    if stream is None:
+        return b""
+    ready, _, _ = select.select([stream], [], [], max(0.0, timeout))
+    if not ready:
+        return None
+    return os.read(stream.fileno(), n)
+
+
 def record_utterance(cfg, source=None):
     """Record until the caller stops talking. Returns {'path','seconds'} or None."""
     rate = dig(cfg, "audio.sample_rate", 16000)
@@ -179,21 +195,30 @@ def record_utterance(cfg, source=None):
                "--channels=1", f"--device={source}", "-"]
     else:
         cmd = _record_cmd(cfg, source, rate)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
+    )
     chunk_bytes = (rate // 20) * 2  # 50 ms of s16 mono
     pcm = array.array("h")
     thresh = None
     floor, early = [], []
     speech_start = None
     last_voice = None
+    pending = b""
     t0 = time.monotonic()
+    limit = max_s + 2
     try:
-        while time.monotonic() - t0 < max_s + 2:
-            raw = proc.stdout.read(chunk_bytes)
-            if not raw:
-                break
-            if len(raw) < chunk_bytes:
+        while time.monotonic() - t0 < limit:
+            remain = limit - (time.monotonic() - t0)
+            got = _read_chunk(proc.stdout, chunk_bytes, min(0.25, remain))
+            if got is None:
                 continue
+            if not got:
+                break
+            pending += got
+            if len(pending) < chunk_bytes:
+                continue
+            raw, pending = pending[:chunk_bytes], pending[chunk_bytes:]
             elapsed = time.monotonic() - t0
             a = array.array("h")
             a.frombytes(raw)

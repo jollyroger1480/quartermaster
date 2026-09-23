@@ -180,6 +180,9 @@ def run_session(cfg, number="unknown", log=print):
         empty = 0
         turns = 0
         while time.monotonic() - t0 < max_dur and turns < max_turns:
+            if phone.call_state().get("state") != 2:
+                log("caller hung up")
+                break
             rec = audio.record_utterance(cfg)
             utt_path = rec["path"] if rec else None
             try:
