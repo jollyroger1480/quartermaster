@@ -198,11 +198,13 @@ Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
 ## On the line (September 23, 2026)
 
 Boat-pickup test call. Quartermaster answered, took the message, and posted
-the transcript into Telegram on the shop phone. The caller’s number, name,
-and address are covered in the shot. The phone still cannot open
+the transcript into Telegram on the shop phone. The phone still cannot open
 `transcript.md` from that chat: the alert links a file on the shop computer.
 
-![Boat pickup transcript in Telegram](docs/boat-pickup-telegram-2026-09-23.jpg)
+The blank bars in the photo are on purpose. They cover the caller ID, the
+customer's name, the street, and the file path on the shop computer.
+
+![Boat pickup transcript in Telegram. Blank bars cover the caller ID, the customer's name, the street, and the shop-computer path.](docs/boat-pickup-telegram-2026-09-23.jpg)
 
 ---
 
