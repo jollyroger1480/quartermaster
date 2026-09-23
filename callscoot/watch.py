@@ -36,11 +36,15 @@ def _warmup(cfg):
 
 
 def watch(cfg):
-    phone.ensure_connected(cfg)
+    errors.setup(cfg)
     answer_unknown = bool(dig(cfg, "phone.answer_unknown", True))
     ring_delay = float(dig(cfg, "call.ring_delay_s", 3.0))
     refresh_s = float(dig(cfg, "orders.refresh_minutes", 15)) * 60
-    errors.setup(cfg)
+    try:
+        phone.ensure_connected(cfg)
+    except phone.PhoneError as e:
+        print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
+        errors.record("adb", e, cfg)
     print(f"[{_stamp()}] watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}. Ctrl+C to stop.")
     _warmup(cfg)
     prev = 0
