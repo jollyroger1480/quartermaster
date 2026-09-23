@@ -1,0 +1,38 @@
+"""Call alerts: push a digest to Julian's Telegram the moment a message is taken.
+Uses the same bot/home channel Hermes uses (keys from ~/.hermes/.env, loaded by
+the CLI). Failures are logged, never fatal — the transcript is always on disk."""
+import os
+import urllib.parse
+import urllib.request
+
+from .config import dig
+
+
+def telegram_send(cfg, text):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat = (dig(cfg, "alerts.telegram_chat", "")
+            or os.environ.get("TELEGRAM_HOME_CHANNEL", ""))
+    if not token or not chat:
+        return False, "telegram not configured"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urllib.parse.urlencode({"chat_id": chat, "text": text[:3500]}).encode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=10) as r:
+            return r.status == 200, f"telegram http {r.status}"
+    except Exception as e:
+        return False, f"telegram send failed: {e}"
+
+
+def send_call_alert(cfg, number, transcript, flagged, transcript_path, log=print):
+    if not dig(cfg, "alerts.telegram", True):
+        return
+    caller_lines = [t for w, t in transcript if w == "caller"]
+    gist = " | ".join(caller_lines)[:600] or "(no speech captured)"
+    owner = dig(cfg, "persona.owner", "the owner")
+    text = (
+        f"☎️ CALL{' ⚠️ ESCALATION' if flagged else ''} — {number}\n"
+        f"{gist}\n"
+        f"— taken by the shop assistant for {owner}"
+    )
+    ok, note = telegram_send(cfg, text)
+    log(f"{'alert sent' if ok else 'alert skipped'}: {note}")

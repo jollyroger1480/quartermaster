@@ -1,0 +1,144 @@
+# ═══════════════════════════════════════════════════════════════
+#  QUARTERMASTER — configuration
+#  Copy this file to callscoot.toml (same dir) and edit the values.
+#  Every setting below is the full set — anything missing falls back
+#  to code defaults.
+# ═══════════════════════════════════════════════════════════════
+
+[phone]
+# Wireless debugging target. Leave adb_ip empty to auto-discover via
+# `adb mdns services`. NOTE: the wireless-debugging port changes when the
+# phone reboots or the toggle is re-enabled — re-read it from the phone.
+adb_ip = "192.168.1.50"
+adb_port = 5555
+answer_keycodes = ["KEYCODE_HEADSETHOOK", "KEYCODE_CALL"]
+
+# Auto-answer policy (watch mode)
+allowlist = [
+  # "+15551234567",   # always answer these (last 10 digits matched)
+]
+# true = answer every caller (receptionist mode); false = allowlist only
+answer_unknown = true
+
+[call]
+ring_delay_s = 3.0        # let it ring this long before answering
+answer_delay_ms = 1200    # wait after answering before the greeting
+max_duration_s = 600      # hard cap per call
+max_turns = 30
+greeting = "Thanks for calling, this is the shop assistant. How can I help you today?"
+farewell = "Thanks for calling, have a good one. Goodbye!"
+voicemail_reply = "I'll make sure the owner follows up with you. Goodbye for now."
+arrange_reply = "I'm not able to book pickups or visits myself, but I'll pass your message straight to the owner — I've got your number from caller ID. Is there something else I can check, like an order?"
+spam_reply = "Not interested — please remove this number from your list. Goodbye."
+thinking_cue = true       # soft blip while the bot thinks between turns
+
+[alerts]
+telegram = true           # push a digest to Telegram after every message-taking call
+telegram_chat = ""        # optional chat id override; defaults to TELEGRAM_HOME_CHANNEL
+
+[audio]
+# bluealsa = bluez-alsa daemon owns HFP (recommended, see scripts/install-bluealsa.sh)
+# pipewire = legacy fallback path
+backend = "bluealsa"
+# Your phone's hands-free PCM — replace with your phone's Bluetooth MAC.
+bluealsa_pcm = "bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=sco"
+# SCO sample rate: 16000 for mSBC, 8000 for CVSD. Playback retries at the other.
+sco_rate = 16000
+# Only used in pipewire mode (auto-discovered from pactl there)
+bt_sink = ""
+bt_source = ""
+sample_rate = 16000       # capture sample rate fed to whisper
+record_max_s = 14         # max seconds per caller turn
+record_silence_s = 1.5    # caller considered done after this much silence
+record_min_s = 0.45       # ignore sub-this-length blips
+vad_min_rms = 240         # silence threshold floor (raise if BT hiss triggers VAD)
+
+[stt]
+model = "small.en"        # faster-whisper model ("base.en" is faster, "small.en" more accurate)
+language = "en"
+
+[tts]
+backend = "kokoro"        # kokoro (natural) with piper as automatic fallback
+kokoro_voice = "af_heart"
+kokoro_rate = 24000
+voice = "en_US-amy-medium"    # piper fallback voice in ~/.local/share/piper
+length_scale = 1.0
+sentence_silence = 0.35
+
+[llm]
+# OpenAI-compatible providers, tried top to bottom; first success wins.
+# Keys come from environment variables (see api_key_env) — put them in
+# $CALLSCOOT_HOME/.env and they load automatically.
+max_tokens = 250
+temperature = 0.3
+
+# Example: Z.ai GLM Flash (cheap, fast)
+[[llm.providers]]
+name = "glm"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+model = "glm-5.3-flash"
+api_key_env = "ZAI_API_KEY"
+extra_body = { thinking = { type = "disabled" } }
+
+# Example: Groq (free tier, very fast)
+[[llm.providers]]
+name = "groq"
+base_url = "https://api.groq.com/openai/v1"
+model = "llama-3.3-70b-versatile"
+api_key_env = "GROQ_API_KEY"
+
+# Example: local Ollama (no cloud at all)
+[[llm.providers]]
+name = "ollama"
+base_url = "http://127.0.0.1:11434/v1"
+model = "llama3.1"
+api_key_env = ""
+
+[vault]
+# Where the bot looks for answers: a folder tree of .md/.txt notes.
+# Point this at whatever knowledge base you keep — orders, policies, FAQs.
+root = "~/callscoot/knowledge"
+# Sub-folders of `root` to search (empty = search everything)
+lanes = []
+# Extra folders with reference material
+extra_dirs = []
+graphify_dir = ""         # optional: graphify knowledge-graph root, "" to disable
+top_k = 6
+chunk_chars = 700
+
+[orders]
+# OPTIONAL: snapshot live order data into knowledge/ so the bot can answer
+# "where is my order". The eBay fetch uses a local read-only tool — if you
+# don't have that setup, these fetches simply skip.
+ebay_agent_dir = "~/ebay/agent"
+ebay_days = 30
+ebay_count = 25
+square_seen_json = "~/callscoot/knowledge/square_seen_orders.json"
+knowledge_dir = "~/callscoot/knowledge"
+refresh_minutes = 15
+
+[persona]
+shop = "Black Pearl Salvage"        # your shop name
+owner = "Anne"                      # your name — who gets the messages
+name = "the shop assistant"         # how the bot introduces itself
+# The ONLY hours/address the bot may state. Empty = it punts instead of inventing.
+shop_hours = "By appointment"
+business_address = "Yourtown, ST 00000"
+system_extra = ""                   # extra lines appended to the system prompt
+
+[logs]
+dir = "~/callscoot/logs"            # call transcripts + compressed audio archives
+
+[spam]
+# Numbers to never answer (last 10 digits matched)
+blacklist = []
+# When the conversation smells like robocall/telemarketer/scam, decline + hang up
+hangup_on_scam = true
+# Skip the Telegram alert for confirmed spam calls (transcript is still saved)
+alert_on_spam = false
+
+[sms]
+enabled = true              # answer inbound texts with the same brain
+poll_seconds = 5
+max_replies_per_hour = 4    # per number — loop protection
+reply_to_contacts = false   # false = never bot-reply to numbers saved in the phone's contacts

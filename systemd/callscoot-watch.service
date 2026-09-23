@@ -1,0 +1,14 @@
+[Unit]
+Description=callscoot phone receptionist (auto-answer watch loop)
+After=pipewire.service bluetooth.service network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/callscoot/bin/callscoot watch
+Restart=on-failure
+RestartSec=10
+# give BT/ADB time after boot
+ExecStartPre=/bin/sleep 15
+
+[Install]
+WantedBy=default.target

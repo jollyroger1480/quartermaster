@@ -1,0 +1,14 @@
+# Build artifacts / local state — never commit these
+callscoot.toml          # your real config (copy callscoot.example.toml instead)
+.pin                    # your phone's PIN
+.sms_state              # sms poller checkpoint
+kokoro.off              # gaming-mode switch
+.env
+logs/
+knowledge/*
+!knowledge/services.example.md
+__pycache__/
+*.pyc
+vendor/
+*.ogg
+*.wav
