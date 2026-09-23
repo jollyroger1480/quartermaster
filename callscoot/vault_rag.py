@@ -84,9 +84,10 @@ def retrieve(cfg, query, k=None):
         # live operational digests outrank static notes on ties
         fresh = 6 if os.sep + "knowledge" + os.sep in path else 0
         for chunk in _chunks(text_of(path), max_chars):
-            s = _score(chunk, q_terms, q_numbers) + fresh
-            if s > 0:
-                hits.append((s, path, chunk))
+            s = _score(chunk, q_terms, q_numbers)
+            if s <= 0:
+                continue
+            hits.append((s + fresh, path, chunk))
     hits.sort(key=lambda h: -h[0])
     # cap chunks per file so one dense note can't fill the whole context
     picked, per_file = [], {}
@@ -102,7 +103,8 @@ def retrieve(cfg, query, k=None):
 
 def text_of(path):
     try:
-        return open(path, encoding="utf-8", errors="replace").read()
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
     except OSError:
         return ""
 
@@ -111,6 +113,7 @@ def graphify_query(cfg, query):
     gdir = os.path.expanduser(dig(cfg, "vault.graphify_dir", "") or "")
     if not gdir or not os.path.isdir(gdir):
         return ""
+    query = query.lstrip("-").strip()[:500]  # no flag injection into the CLI
     try:
         p = subprocess.run(["graphify", "query", query], cwd=gdir,
                            capture_output=True, text=True, timeout=25)

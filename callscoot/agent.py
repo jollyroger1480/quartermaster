@@ -110,6 +110,12 @@ def _save_transcript(session_dir, transcript, flagged):
 def _archive(wav_path, dest_no_ext):
     """Archive a call wav tiny: opus ~24kbps mono (1-2 min call ≈ 200-400 KB).
     Falls back to a plain wav copy when ffmpeg/libopus is unavailable."""
+    partial = dest_no_ext + ".ogg"
+    if os.path.exists(partial):
+        try:
+            os.unlink(partial)
+        except OSError:
+            pass
     if shutil.which("ffmpeg"):
         dest = dest_no_ext + ".ogg"
         try:
@@ -181,6 +187,7 @@ def run_session(cfg, number="unknown", log=print):
                     empty += 1
                     if empty == 1:
                         say("Are you still there?")
+                        transcript.append(("note", "no speech — nudged once"))
                         continue
                     say(voicemail)
                     transcript.append(("agent", voicemail))

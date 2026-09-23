@@ -67,18 +67,23 @@ def watch(cfg):
             label = num or "unknown number"
             print(f"[{_stamp()}] RINGING {label}")
             blacklist = {phone.last10(b) for b in (dig(cfg, "spam.blacklist", []) or []) if b}
-            if num and phone.last10(num) in blacklist:
+            if not num:
+                # caller ID often lands a poll or two after the ring
+                prev = s
+                time.sleep(1)
+                continue
+            if phone.last10(num) in blacklist:
                 print(f"[{_stamp()}] blacklisted — not answering")
                 prev = s
                 time.sleep(1)
                 continue
-            allowed = (num and phone.allowlisted(cfg, num)) or answer_unknown
+            allowed = phone.allowlisted(cfg, num) or answer_unknown
             if not allowed:
                 print("[callscoot]   not allowlisted — ignoring")
                 prev = s
                 time.sleep(1)
                 continue
-            audio.set_hfp_profile()  # pre-arm the audio path while it rings
+            audio.set_hfp_profile(cfg)  # pre-arm the audio path while it rings
             time.sleep(ring_delay)
             st2 = phone.call_state()
             if st2["state"] != 1:
@@ -91,8 +96,8 @@ def watch(cfg):
                 print(f"[{_stamp()}] [ session error: {e}")
                 try:
                     phone.hangup()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[{_stamp()}] error hanging up: {e}")
             prev = phone.call_state()["state"]
             print("[callscoot] idle again")
             continue

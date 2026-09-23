@@ -78,9 +78,9 @@ def bt_card():
     return None
 
 
-def set_hfp_profile(card=None):
+def set_hfp_profile(card=None, cfg=None):
     """Pipewire-backend only (bluealsa handles its own HFP)."""
-    if backend({}) == "bluealsa":
+    if backend(cfg or {}) == "bluealsa":
         return "bluealsa"
     card = card or bt_card()
     if not card:
@@ -285,13 +285,19 @@ def play_to_sink(cfg, wav_path, sink=None):
     try:
         if backend(cfg) == "bluealsa":
             rate = _sco_rate(cfg)
+            if shutil.which("ffmpeg"):
+                conv = wav_path.replace(".wav", f"_{rate}.wav")
+                c = _run(["ffmpeg", "-y", "-i", wav_path, "-ar", str(rate),
+                          "-ac", "1", conv], timeout=60)
+                if c.returncode == 0:
+                    wav_path, conv = conv, wav_path
             p = _run(["aplay", "-D", sink, "-q", wav_path], timeout=30)
             if p.returncode != 0 and shutil.which("ffmpeg"):
                 # sample-rate mismatch (SCO is 8k CVSD / 16k mSBC) — convert and retry
                 conv = wav_path.replace(".wav", f"_{rate}.wav")
                 c = _run(["ffmpeg", "-y", "-i", wav_path, "-ar", str(rate),
                           "-ac", "1", conv], timeout=60)
-                if c.returncode == 0:
+                if c.returncode == 0 and os.path.isfile(conv):
                     p = _run(["aplay", "-D", sink, "-q", conv], timeout=30)
                     try:
                         os.unlink(conv)

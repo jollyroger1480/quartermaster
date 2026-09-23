@@ -111,6 +111,8 @@ def unlock(cfg=None):
         raise PhoneError("no PIN saved — run: read -s -p 'PIN: ' P && printf '%s' \"$P\" > "
                          + PIN_FILE + " && chmod 600 " + PIN_FILE)
     pin = open(PIN_FILE).read().strip()
+    if not pin.isdigit():
+        raise PhoneError("saved PIN is not numeric — refusing to type it")
     adb(["shell", "input", "swipe", "500", "1500", "500", "300"])
     time.sleep(1.5)
     adb(["shell", "input", "text", pin])

@@ -26,13 +26,16 @@ def telegram_send(cfg, text):
 def send_call_alert(cfg, number, transcript, flagged, transcript_path, log=print):
     if not dig(cfg, "alerts.telegram", True):
         return
+    if not transcript_path:
+        transcript_path = "(none)"
     caller_lines = [t for w, t in transcript if w == "caller"]
     gist = " | ".join(caller_lines)[:600] or "(no speech captured)"
     owner = dig(cfg, "persona.owner", "the owner")
     text = (
         f"☎️ CALL{' ⚠️ ESCALATION' if flagged else ''} — {number}\n"
         f"{gist}\n"
-        f"— taken by the shop assistant for {owner}"
+        f"— taken by the shop assistant for {owner}\n"
+        f"transcript: {transcript_path}"
     )
     ok, note = telegram_send(cfg, text)
     log(f"{'alert sent' if ok else 'alert skipped'}: {note}")

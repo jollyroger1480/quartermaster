@@ -2,7 +2,6 @@
 vault-grounded brain, sent through Google Messages (unlock -> compose ->
 type -> tap send). Only engages real phone numbers; shortcodes/services and
 spam scripts are ignored. Cooldowns prevent runaway loops."""
-import datetime
 import json
 import os
 import re
@@ -115,6 +114,8 @@ def _send_sms(cfg, addr, text):
     time.sleep(3)
     _adb_shell(["input", "keyevent", "4"])  # back out of the thread
     time.sleep(1)
+    phone.lock_screen()
+    time.sleep(1)
     sent = _adb_shell(["content", "query", "--uri", "content://sms/sent",
                        "--projection", "body"])
     return text[:40] in sent
@@ -136,10 +137,12 @@ def poll(cfg, log=print):
     fresh = [m for m in msgs if int(m["_id"]) > last_id]
     if not fresh:
         return
-    state["last_id"] = int(msgs[-1]["_id"])
     now = time.time()
     replies = state.get("replies", {})
+    processed_ok = True
     for m in fresh:
+        if not processed_ok:
+            break  # a send failed — retry the remaining messages next poll
         addr, body = m.get("address", ""), (m.get("body") or "").strip()
         if not _is_mobile_number(addr) or not body:
             continue
@@ -162,9 +165,15 @@ def poll(cfg, log=print):
         if SPAM_RE.search(body):
             reply = "Not interested — please remove this number."
         sent_ok = _send_sms(cfg, addr, reply)
+        if not sent_ok:
+            state["last_id"] = int(m["_id"]) - 1  # retry this message next poll
+            _save_state(state)
+            log(f"sms: send failed for {addr} — will retry")
+            break
         history.append(now)
         replies[addr] = history
         state["replies"] = replies
+        state["last_id"] = int(m["_id"])
         _save_state(state)
         log(f"sms {addr}: {'replied' if sent_ok else 'SEND FAILED'} [{provider}] {reply[:80]}")
         notify.send_call_alert(

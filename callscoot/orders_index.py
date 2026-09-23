@@ -53,11 +53,11 @@ def _ebay_orders(cfg):
                            capture_output=True, text=True, timeout=240)
     except (OSError, subprocess.TimeoutExpired) as e:
         return None, None, f"eBay orders fetch failed: {e}"
+    if p.returncode != 0:
+        return None, None, f"eBay orders tool exited {p.returncode} — skipped"
     out = (p.stdout or "").strip()
     if not out or TOKEN_FAIL in out:
         return None, None, "eBay token not available (PC gate fail) — skipped"
-    if "Traceback" in (p.stderr or "") and len(out) < 400:
-        return None, None, "eBay orders tool errored — skipped"
     completed, unshipped, buf, section = None, None, [], None
     for line in out.splitlines() + ["===END==="]:
         if line.strip() in ("===COMPLETED===", "===UNSHIPPED===", "===END==="):
