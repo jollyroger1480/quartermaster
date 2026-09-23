@@ -15,7 +15,12 @@ def telegram_send(cfg, text):
     if not token or not chat:
         return False, "telegram not configured"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": chat, "text": text[:3500]}).encode()
+    # composite "chat_id:thread_id" targets a forum topic inside a group
+    chat_id, _, thread = chat.partition(":")
+    payload = {"chat_id": chat_id, "text": text[:3500]}
+    if thread:
+        payload["message_thread_id"] = int(thread)
+    data = urllib.parse.urlencode(payload).encode()
     try:
         with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=10) as r:
             return r.status == 200, f"telegram http {r.status}"

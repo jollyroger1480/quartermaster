@@ -34,7 +34,9 @@ thinking_cue = true       # soft blip while the bot thinks between turns
 
 [alerts]
 telegram = true           # push a digest to Telegram after every message-taking call
-telegram_chat = ""        # optional chat id override; defaults to TELEGRAM_HOME_CHANNEL
+# Alerts land here. Use a group id, a DM id, or "groupid:topicid" to target
+# a forum topic inside a group (keeps phone alerts out of your other bot traffic).
+telegram_chat = "-1004490470270:19759"
 
 [audio]
 # bluealsa = bluez-alsa daemon owns HFP (recommended, see scripts/install-bluealsa.sh)
