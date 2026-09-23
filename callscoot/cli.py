@@ -76,7 +76,7 @@ def cmd_doctor(cfg):
         card = audio.bt_card()
         if not card:
             return False, "no bluez_card — the phone must be connected with call audio allowed"
-        prof = audio.set_hfp_profile(card)
+        prof = audio.set_hfp_profile(cfg, card)
         if not prof:
             return False, f"card {card} present but no HFP profile would apply"
         sink, source = audio.bt_sink(cfg), audio.bt_source(cfg)

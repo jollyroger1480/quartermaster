@@ -78,8 +78,13 @@ def bt_card():
     return None
 
 
-def set_hfp_profile(card=None, cfg=None):
-    """Pipewire-backend only (bluealsa handles its own HFP)."""
+def set_hfp_profile(cfg=None, card=None):
+    """Switch the PipeWire card to an HFP profile.
+
+    cfg is first: the watch loop passes the config dict, and a dict in the
+    card slot makes pactl throw and drops the call. BlueALSA owns its own
+    SCO link, so that backend returns without touching the card.
+    """
     if backend(cfg or {}) == "bluealsa":
         return "bluealsa"
     card = card or bt_card()
@@ -123,7 +128,7 @@ def bt_source(cfg=None):
 def wait_for_hfp(cfg, timeout=15):
     """Make sure the HFP audio path exists; returns (sink, source)."""
     if backend(cfg) == "bluealsa":
-        set_hfp_profile()
+        set_hfp_profile(cfg)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if bluealsa_ready(cfg):
@@ -134,7 +139,7 @@ def wait_for_hfp(cfg, timeout=15):
             "bluealsa HFP PCM not found — is the phone connected with Phone "
             "audio enabled? Check: bluealsactl list-pcms"
         )
-    set_hfp_profile()
+    set_hfp_profile(cfg)
     deadline = time.monotonic() + timeout
     sink = source = None
     while time.monotonic() < deadline:
@@ -142,7 +147,7 @@ def wait_for_hfp(cfg, timeout=15):
         source = bt_source(cfg)
         if sink and source:
             return sink, source
-        set_hfp_profile()
+        set_hfp_profile(cfg)
         time.sleep(1.0)
     raise AudioError(
         "Bluetooth HFP nodes missing "
