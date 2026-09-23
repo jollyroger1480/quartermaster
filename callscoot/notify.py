@@ -1,6 +1,10 @@
-"""Call alerts: push a digest to Julian's Telegram the moment a message is taken.
-Uses the same bot/home channel Hermes uses (keys from ~/.hermes/.env, loaded by
-the CLI). Failures are logged, never fatal — the transcript is always on disk."""
+"""Call and SMS alerts via Telegram sendMessage.
+
+Token is TELEGRAM_BOT_TOKEN. Destination is alerts.telegram_chat, or
+TELEGRAM_HOME_CHANNEL when that setting is empty. "chat_id:topic_id" posts
+into a forum topic. A failed send is logged and never kills the call; the
+transcript is already on disk.
+"""
 import os
 import urllib.parse
 import urllib.request

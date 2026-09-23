@@ -34,9 +34,13 @@ thinking_cue = true       # soft blip while the bot thinks between turns
 
 [alerts]
 telegram = true           # push a digest to Telegram after every message-taking call
-# Alerts land here. Use a group id, a DM id, or "groupid:topicid" to target
-# a forum topic inside a group (keeps phone alerts out of your other bot traffic).
-telegram_chat = "-1004490470270:19759"
+# Where alerts go. Leave empty to use TELEGRAM_HOME_CHANNEL from .env.
+# A private chat id, a group id, or "groupid:topicid" for a forum topic.
+# See README "Setup — Telegram". Do not commit a real id.
+telegram_chat = ""
+# telegram_chat = "123456789"              # DM with your bot
+# telegram_chat = "-1001234567890"         # a group
+# telegram_chat = "-1001234567890:3"       # one forum topic inside that group
 
 [audio]
 # bluealsa = bluez-alsa daemon owns HFP (recommended, see scripts/install-bluealsa.sh)

@@ -61,6 +61,7 @@ those rules are in the prompt *and* the guardrails.
 | Wireless debugging | Developer options → pair once |
 | mic + speakers or headset | on the PC (this is the phone's "headset") |
 | API keys (optional) | any OpenAI-compatible LLM endpoint; Groq free tier works |
+| Telegram | a bot you create, plus one chat, group, or forum topic for alerts |
 | Python 3.11+ | stdlib only for the core; whisper/kokoro installed separately |
 
 > **Heads-up:** this stack was tuned on a real phone and it works, but Linux
@@ -109,12 +110,73 @@ pip install --user --break-system-packages "https://github.com/explosion/spacy-m
 cp callscoot.example.toml callscoot.toml
 $EDITOR callscoot.toml          # your shop name, phone MAC, LLM keys
 
-# 5. Keys (LLM + Telegram) — loaded automatically at startup
-$EDITOR .env                    # GROQ_API_KEY=... / ZAI_API_KEY=... / TELEGRAM_BOT_TOKEN=... / TELEGRAM_HOME_CHANNEL=...
+# 5. Keys — loaded automatically at startup. Telegram steps are the next section.
+$EDITOR .env                    # GROQ_API_KEY=...  ZAI_API_KEY=...  TELEGRAM_BOT_TOKEN=...
 
 # 6. Health check
 bin/callscoot doctor
 ```
+
+## Setup — Telegram
+
+Calls and texts still get answered, and the transcript still lands in
+`logs/`, if Telegram is not set up. The digest on your phone is a separate
+step. Quartermaster only **sends**. It does not read your Telegram chats.
+
+1. Install Telegram on the phone that should get the alerts. That can be the
+   shop phone or any other phone you carry.
+2. In Telegram, open **@BotFather**, send `/newbot`, and follow the prompts.
+   Copy the token. It looks like `123456789:AA...`. Treat it like a password.
+3. Put it in `.env` next to `callscoot.toml` (this file is git-ignored):
+   ```bash
+   umask 077
+   printf 'TELEGRAM_BOT_TOKEN=%s\n' 'paste-token-here' >> .env
+   ```
+4. Open a chat the bot is allowed to post in:
+   - **Private:** open your new bot and tap **Start**. Until you do, Telegram
+     refuses the send.
+   - **Group:** make a group, add the bot, and send one message in the group.
+   - **Forum topic:** turn Topics on for that group, add the bot, and send
+     one message inside the topic you want.
+5. Ask Telegram for the id. From the same directory, after that message:
+   ```bash
+   set -a; source .env; set +a
+   curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"
+   ```
+   In the JSON, `chat.id` is the destination. A private chat is a positive
+   number. A group starts with `-100`. Inside a forum topic, also copy
+   `message_thread_id`.
+6. Tell Quartermaster where to post. Either line works. The toml value wins
+   when it is not empty.
+   ```bash
+   # .env  — whole chat
+   echo 'TELEGRAM_HOME_CHANNEL=-1001234567890' >> .env
+   # .env  — one forum topic (chat id, a colon, topic id)
+   echo 'TELEGRAM_HOME_CHANNEL=-1001234567890:3' >> .env
+   ```
+   Or set `alerts.telegram_chat` in `callscoot.toml` to that same string.
+   Leave `alerts.telegram = true`.
+7. Prove the bot can post before you trust a live call. A chat with no topic:
+   ```bash
+   set -a; source .env; set +a
+   curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+     --data-urlencode "chat_id=${TELEGRAM_HOME_CHANNEL}" \
+     --data-urlencode "text=Quartermaster test"
+   ```
+   A forum topic (`chatid:topicid` in `TELEGRAM_HOME_CHANNEL`):
+   ```bash
+   set -a; source .env; set +a
+   curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+     --data-urlencode "chat_id=${TELEGRAM_HOME_CHANNEL%%:*}" \
+     --data-urlencode "message_thread_id=${TELEGRAM_HOME_CHANNEL#*:}" \
+     --data-urlencode "text=Quartermaster test"
+   ```
+   A working send returns `"ok":true`, and the message shows up in Telegram.
+
+After a real call or text, the watcher posts a short digest: who called, what
+they said, and `transcript: <path on this computer>`. The phone can read that
+message. It cannot open the `.md` file, because that path is on the shop
+computer, not on the phone.
 
 ## Setup — the knowledge (this is the magic)
 
@@ -171,10 +233,11 @@ Everything lives in `callscoot.toml` — full annotated reference in
 | `tts.backend` | `kokoro` (natural) or `piper` (featherweight) |
 | `persona.shop_hours` | the ONLY hours it may speak — empty = it punts instead of inventing |
 | `spam.blacklist` | numbers never answered |
-| `alerts.telegram` | message digests to your phone |
+| `alerts.telegram` | `true` sends the digest; `false` keeps transcripts local only |
+| `alerts.telegram_chat` | chat id, or `chatid:topicid`; empty uses `TELEGRAM_HOME_CHANNEL` |
 
 Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_HOME_CHANNEL`, etc.
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_HOME_CHANNEL`. See **Setup — Telegram**.
 
 ## Troubleshooting (the traps we fell into so ye don't have to)
 
@@ -192,6 +255,18 @@ Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
 - **Bot cut someone off mid-sentence** → raise `record_silence_s`.
 - **First response slow** → that's the models cold-loading; keep the watcher
   running (it pre-warms at startup).
+- **`alert skipped: telegram not configured`** → `.env` has no
+  `TELEGRAM_BOT_TOKEN`, or both `alerts.telegram_chat` and
+  `TELEGRAM_HOME_CHANNEL` are empty. Setup — Telegram, steps 3 and 6.
+- **`telegram send failed` / HTTP 401** → the bot token is wrong. Ask
+  @BotFather for `/token` and replace the line in `.env`.
+- **HTTP 400 chat not found, or HTTP 403** → the bot is not in that chat, the
+  id is from a different bot, or you never tapped Start in a private chat.
+  For a topic, `message_thread_id` has to be the number from `getUpdates`,
+  not the topic's name.
+- **The Telegram message arrived but the `.md` link does nothing** → the
+  digest includes a file path on the shop computer. The phone has nowhere to
+  open it. The message text is the whole alert.
 - **Something failed and the journal is only one line** → debug logging is on.
   `logs/errors.log` (same folder as the call transcripts) has the watch lines
   and the traceback. The same error is written once, then counted, so a retry
