@@ -30,6 +30,7 @@ def _warmup(cfg):
         stt.transcribe(cfg, p)
         os.unlink(p)
         print(f"[{_stamp()}] warmed up — TTS and STT models loaded")
+        errors.info("warmed up — TTS and STT models loaded", cfg)
     except Exception as e:
         print(f"[{_stamp()}] warmup skipped: {e}")
         errors.record("warmup", e, cfg)
@@ -46,6 +47,10 @@ def watch(cfg):
         print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
         errors.record("adb", e, cfg)
     print(f"[{_stamp()}] watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}. Ctrl+C to stop.")
+    errors.info(
+        f"watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}",
+        cfg,
+    )
     _warmup(cfg)
     prev = 0
     last_index = 0.0
@@ -64,6 +69,8 @@ def watch(cfg):
             time.sleep(3)
             continue
         s, num = st["state"], st["number"]
+        if s != prev:
+            errors.debug(f"phone state {prev} -> {s}", cfg)
         if s == 0 and time.monotonic() - last_index > refresh_s:
             last_index = time.monotonic()
             try:
@@ -74,6 +81,7 @@ def watch(cfg):
         if s == 1 and prev != 1:
             label = num or "unknown number"
             print(f"[{_stamp()}] RINGING {label}")
+            errors.info(f"RINGING {label}", cfg)
             blacklist = {phone.last10(b) for b in (dig(cfg, "spam.blacklist", []) or []) if b}
             if not num:
                 # caller ID often lands a poll or two after the ring
@@ -116,7 +124,7 @@ def watch(cfg):
         if dig(cfg, "sms.enabled", True) and sms_tick != getattr(sms_poll, "tick", None) and s == 0:
             sms_poll.tick = sms_tick
             try:
-                sms.poll(cfg, log=lambda m: print(f"[{_stamp()}] {m}"))
+                sms.poll(cfg, log=lambda m: (print(f"[{_stamp()}] {m}"), errors.info(m, cfg)))
             except Exception as e:
                 print(f"[{_stamp()}] sms poll error: {e}")
                 errors.record("sms-poll", e, cfg)

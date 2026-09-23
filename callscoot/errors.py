@@ -1,9 +1,9 @@
-"""Error log for the shop secretary.
+"""Shop-secretary log.
 
-The watch loop still prints its one-line status to the journal. This records
-the traceback the first time an error shows up, and writes
-``<logs.dir>/errors.log``. The same error is not stacked again for 10 minutes.
-``CALLSCOOT_LOG=DEBUG`` is not a firehose: this file is errors only.
+Debug logging is on unless ``CALLSCOOT_LOG`` is set to INFO, WARNING, or
+ERROR. Lines go to ``<logs.dir>/errors.log``. The journal still gets the
+one-line status prints. A repeated error keeps one traceback, then stays
+quiet for 10 minutes.
 """
 import logging
 import os
@@ -26,21 +26,31 @@ def setup(cfg=None):
     log_dir = os.path.expanduser(dig(cfg or {}, "logs.dir", os.path.join(app_home(), "logs")))
     os.makedirs(log_dir, exist_ok=True)
     path = os.path.join(log_dir, "errors.log")
+    level_name = os.environ.get("CALLSCOOT_LOG", "DEBUG").upper()
+    level = getattr(logging, level_name, logging.DEBUG)
     log = logging.getLogger("callscoot.errors")
-    log.setLevel(logging.INFO)
+    log.setLevel(level)
     log.propagate = False
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    file_handler = RotatingFileHandler(path, maxBytes=200_000, backupCount=3, encoding="utf-8")
-    file_handler.setLevel(logging.WARNING)
+    file_handler = RotatingFileHandler(path, maxBytes=500_000, backupCount=3, encoding="utf-8")
+    file_handler.setLevel(level)
     file_handler.setFormatter(fmt)
     err_handler = logging.StreamHandler(sys.stderr)
     err_handler.setLevel(logging.WARNING)
     err_handler.setFormatter(fmt)
     log.addHandler(file_handler)
     log.addHandler(err_handler)
-    log.warning("error log on: %s", path)
+    log.warning("debug logging on: %s level=%s", path, logging.getLevelName(level))
     _log = log
     return log
+
+
+def debug(msg, cfg=None):
+    setup(cfg).debug(msg)
+
+
+def info(msg, cfg=None):
+    setup(cfg).info(msg)
 
 
 def record(where, err, cfg=None):

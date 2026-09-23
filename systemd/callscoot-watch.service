@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 ExecStart=%h/callscoot/bin/callscoot watch
 Environment=PYTHONUNBUFFERED=1
+Environment=CALLSCOOT_LOG=DEBUG
 Restart=on-failure
 RestartSec=10
 # give BT/ADB time after boot

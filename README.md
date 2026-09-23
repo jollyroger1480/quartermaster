@@ -192,9 +192,10 @@ Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
 - **Bot cut someone off mid-sentence** → raise `record_silence_s`.
 - **First response slow** → that's the models cold-loading; keep the watcher
   running (it pre-warms at startup).
-- **Something failed and the journal is only one line** → the traceback is in
-  `logs/errors.log` (same folder as the call transcripts). The same error is
-  written once, then counted, so a retry loop does not fill the file.
+- **Something failed and the journal is only one line** → debug logging is on.
+  `logs/errors.log` (same folder as the call transcripts) has the watch lines
+  and the traceback. The same error is written once, then counted, so a retry
+  loop does not fill the file. Set `CALLSCOOT_LOG=INFO` to quiet the debug lines.
 
 ---
 
