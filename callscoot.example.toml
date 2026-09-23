@@ -129,7 +129,7 @@ business_address = "Yourtown, ST 00000"
 system_extra = ""                   # extra lines appended to the system prompt
 
 [logs]
-dir = "~/callscoot/logs"            # call transcripts + compressed audio archives
+dir = "~/callscoot/logs"            # transcripts, audio, and errors.log (tracebacks)
 
 [spam]
 # Numbers to never answer (last 10 digits matched)

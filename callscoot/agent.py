@@ -215,8 +215,9 @@ def run_session(cfg, number="unknown", log=print):
             if dig(cfg, "call.thinking_cue", True):
                 try:
                     audio.play_to_sink(cfg, audio.thinking_wav(cfg))
-                except Exception:
-                    pass
+                except Exception as e:
+                    from . import errors
+                    errors.record("thinking-cue", e, cfg)
 
             if dig(cfg, "spam.hangup_on_scam", True) and SPAM_RE.search(caller_text):
                 # scam/telemarketer script detected — decline, hang up, no alert

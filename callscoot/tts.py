@@ -93,6 +93,7 @@ def synth(cfg, text):
     if dig(cfg, "tts.backend", "kokoro") == "kokoro" and not gaming_on():
         try:
             return _kokoro_synth(cfg, text)
-        except Exception:
-            pass  # kokoro hiccup — piper fallback keeps the call alive
+        except Exception as e:
+            from . import errors
+            errors.record("tts-kokoro", e, cfg)  # piper fallback keeps the call alive
     return _piper_synth(cfg, text)

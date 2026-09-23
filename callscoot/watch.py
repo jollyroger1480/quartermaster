@@ -6,7 +6,7 @@ import tempfile
 import time
 import wave
 
-from . import agent, audio, orders_index, phone, sms, stt, tts
+from . import agent, audio, errors, orders_index, phone, sms, stt, tts
 from .config import dig
 
 
@@ -32,6 +32,7 @@ def _warmup(cfg):
         print(f"[{_stamp()}] warmed up — TTS and STT models loaded")
     except Exception as e:
         print(f"[{_stamp()}] warmup skipped: {e}")
+        errors.record("warmup", e, cfg)
 
 
 def watch(cfg):
@@ -39,6 +40,7 @@ def watch(cfg):
     answer_unknown = bool(dig(cfg, "phone.answer_unknown", True))
     ring_delay = float(dig(cfg, "call.ring_delay_s", 3.0))
     refresh_s = float(dig(cfg, "orders.refresh_minutes", 15)) * 60
+    errors.setup(cfg)
     print(f"[{_stamp()}] watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}. Ctrl+C to stop.")
     _warmup(cfg)
     prev = 0
@@ -49,10 +51,11 @@ def watch(cfg):
             st = phone.call_state()
         except phone.PhoneError as e:
             print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
+            errors.record("adb", e, cfg)
             try:
                 phone.ensure_connected(cfg)
-            except Exception:
-                pass
+            except Exception as reconnect_err:
+                errors.record("adb-reconnect", reconnect_err, cfg)
             prev = 0
             time.sleep(3)
             continue
@@ -63,6 +66,7 @@ def watch(cfg):
                 orders_index.refresh(cfg)
             except Exception as e:
                 print(f"[{_stamp()}] [ index error: {e}")
+                errors.record("orders-index", e, cfg)
         if s == 1 and prev != 1:
             label = num or "unknown number"
             print(f"[{_stamp()}] RINGING {label}")
@@ -94,10 +98,12 @@ def watch(cfg):
                 agent.run_session(cfg, number=num or "unknown")
             except Exception as e:
                 print(f"[{_stamp()}] [ session error: {e}")
+                errors.record("call-session", e, cfg)
                 try:
                     phone.hangup()
-                except Exception as e:
-                    print(f"[{_stamp()}] error hanging up: {e}")
+                except Exception as hangup_err:
+                    print(f"[{_stamp()}] error hanging up: {hangup_err}")
+                    errors.record("hangup", hangup_err, cfg)
             prev = phone.call_state()["state"]
             print("[callscoot] idle again")
             continue
@@ -109,6 +115,7 @@ def watch(cfg):
                 sms.poll(cfg, log=lambda m: print(f"[{_stamp()}] {m}"))
             except Exception as e:
                 print(f"[{_stamp()}] sms poll error: {e}")
+                errors.record("sms-poll", e, cfg)
         if tts.gaming_on():  # gaming mode: drop the resident kokoro model
             if tts.unload_kokoro():
                 print(f"[{_stamp()}] gaming mode — kokoro unloaded, voice on piper")

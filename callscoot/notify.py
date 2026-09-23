@@ -25,6 +25,8 @@ def telegram_send(cfg, text):
         with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=10) as r:
             return r.status == 200, f"telegram http {r.status}"
     except Exception as e:
+        from . import errors
+        errors.record("telegram", e, cfg)
         return False, f"telegram send failed: {e}"
 
 
