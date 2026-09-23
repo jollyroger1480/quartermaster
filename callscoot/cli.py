@@ -11,13 +11,10 @@ from .config import app_home, dig, find_config, load
 
 
 def load_env_files():
-    """Load provider keys into the environment. Reads $CALLSCOOT_HOME/.env
-    (recommended spot for your keys) and ~/.hermes/.env when present.
+    """Load provider keys from $CALLSCOOT_HOME/.env.
     Never overrides variables already set in the environment."""
-    paths = [os.path.join(app_home(), ".env"), os.path.expanduser("~/.hermes/.env")]
-    for path in paths:
-        if not os.path.isfile(path):
-            continue
+    path = os.path.join(app_home(), ".env")
+    if os.path.isfile(path):
         for line in open(path, encoding="utf-8", errors="replace"):
             line = line.strip()
             if not line or line.startswith("#"):
