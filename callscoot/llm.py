@@ -36,7 +36,7 @@ def _content(d):
 def providers(cfg):
     return dig(cfg, "llm.providers", None) or [
         {"name": "groq", "base_url": "https://api.groq.com/openai/v1",
-         "model": "llama-3.3-70b-versatile", "api_key_env": "GROQ_API_KEY"},
+         "model": "openai/gpt-oss-20b", "api_key_env": "GROQ_API_KEY"},
         {"name": "ollama", "base_url": "http://127.0.0.1:11434/v1",
          "model": "llama3.1", "api_key_env": ""},
     ]

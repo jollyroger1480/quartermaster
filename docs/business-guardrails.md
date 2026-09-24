@@ -89,7 +89,7 @@ These are spoken as written:
 |---|---|
 | `call.greeting` | right after answer |
 | `call.farewell` | caller says goodbye, in a few words |
-| `call.voicemail_reply` | nobody is talking, second time |
+| `call.voicemail_reply` | the second empty listen. The first empty listen says "Are you still there?" That line is in the code, not in the config. |
 | `call.arrange_reply` | someone asks to come by the house, meet in person, or get a home address, and it is not a scrap or junk job |
 | `call.spam_reply` | the caller sounds like a warranty, IRS, or listing robocall |
 

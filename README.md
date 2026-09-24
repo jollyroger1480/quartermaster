@@ -180,11 +180,12 @@ computer, not on the phone.
 
 ## Setup — the knowledge (this is the magic)
 
-The bot answers **only** from files in `knowledge/` and your config. That
-folder is the difference between a receptionist and a liability:
+The bot answers **only** from the folder `vault.root` points at and from your
+config. The example config uses `~/callscoot/knowledge`. The copy in this
+repo is the template, and the bot does not read it until you copy it there.
 
-- `knowledge/services.md` — your services and pricing rules (template provided)
-- anything else you drop in — policies, FAQs, parts notes, whatever
+- `knowledge/services.example.md` — copy to `~/callscoot/knowledge/services.md` and put your real prices in it
+- anything else you drop in that folder — policies, FAQs, parts notes, whatever
 - optional: wire `[orders]` in the config to a live order export and the bot
   answers "where's my order" from real records, buyer-name matched
 

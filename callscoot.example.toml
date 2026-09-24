@@ -28,7 +28,7 @@ max_turns = 30
 greeting = "Thanks for calling, this is the shop assistant. How can I help you today?"
 farewell = "Thanks for calling, have a good one. Goodbye!"
 voicemail_reply = "I'll make sure the owner follows up with you. Goodbye for now."
-arrange_reply = "I'm not able to book pickups or visits myself, but I'll pass your message straight to the owner — I've got your number from caller ID. Is there something else I can check, like an order?"
+arrange_reply = "I can't set up a visit or give out a home address. I'll pass your message to the owner. I've got your number from caller ID."
 spam_reply = "Not interested — please remove this number from your list. Goodbye."
 thinking_cue = true       # soft blip while the bot thinks between turns
 
@@ -86,11 +86,12 @@ model = "glm-5.3-flash"
 api_key_env = "ZAI_API_KEY"
 extra_body = { thinking = { type = "disabled" } }
 
-# Example: Groq (free tier, very fast)
+# Example: Groq. llama-3.3-70b-versatile left the free tier on 2026-08-16.
+# This program does not send a tool list. Skip groq/compound — that one calls tools.
 [[llm.providers]]
 name = "groq"
 base_url = "https://api.groq.com/openai/v1"
-model = "llama-3.3-70b-versatile"
+model = "openai/gpt-oss-20b"
 api_key_env = "GROQ_API_KEY"
 
 # Example: local Ollama (no cloud at all)

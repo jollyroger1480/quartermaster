@@ -7,7 +7,7 @@ means take a message. Never invent a price, a date, or a time.
 
 # Prices
 
-- Used brake rotor, most cars: $40 plus shipping. Confirm year, make, and model before saying it fits.
+- SAMPLE, delete this line: used brake rotor, most cars, $40 plus shipping. Confirm year, make, and model before saying it fits.
 - Scrap metal pickup: free inside Yourtown. No charge.
 - Junk removal: no set price. Take their name, town, and what they have. The owner calls back with the number and the time.
 - E-waste drop-off: no set price. Cheaper than pickup. Owner quotes it.
