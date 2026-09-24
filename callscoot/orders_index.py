@@ -8,12 +8,25 @@ Digests land in $CALLSCOOT_HOME/knowledge/ (add that dir to vault.extra_dirs).
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 
 from .config import app_home, dig
 
 TOKEN_FAIL = "No EBAY_USER_ACCESS_TOKEN"
+_SHIP_RE = re.compile(r"\s*Ship to:.*", re.I)
+# Buyer streets, phones, and emails are not something the phone bot should see.
+_SQUARE_SKIP = ("street", "address", "email", "phone", "postal", "zip", "city", "recipient", "ship")
+
+
+def _for_phone(text):
+    kept = []
+    for line in (text or "").splitlines():
+        line = _SHIP_RE.sub("", line).rstrip()
+        if line.strip():
+            kept.append(line)
+    return "\n".join(kept)
 
 
 def knowledge_dir(cfg):
@@ -89,8 +102,10 @@ def _square_orders(cfg):
         if isinstance(rec, dict):
             bits = [f"order {rec.get(k2, key)}" for k2 in ("id", "order_id", "number") if rec.get(k2)]
             head = bits[0] if bits else f"order {key}"
-            flat = " | ".join(f"{k2}={v2}" for k2, v2 in rec.items()
-                              if isinstance(v2, (str, int, float)) and v2 != "")
+            flat = " | ".join(
+                f"{k2}={v2}" for k2, v2 in rec.items()
+                if isinstance(v2, (str, int, float)) and v2 != ""
+                and not any(part in k2.lower() for part in _SQUARE_SKIP))
             lines.append(f"{head}: {flat}")
         else:
             lines.append(f"{key}: {rec}")
@@ -105,22 +120,22 @@ def refresh(cfg, log=print):
     completed, unshipped, note = _ebay_orders(cfg)
     summary.append(note)
     key_completed = (
-        "Key: OrderID | buyer username | total | ship-to | items.\n"
+        "Key: OrderID | buyer username | total | items. No street addresses.\n"
         "Every order below is PAID. An order that also appears in ebay_unshipped.md "
         "has NOT shipped yet; one absent from it has already shipped.\n\n"
     )
-    if completed and _write(cfg, "ebay_orders.md", key_completed + completed):
+    if completed and _write(cfg, "ebay_orders.md", key_completed + _for_phone(completed)):
         summary.append("wrote ebay_orders.md")
     key_unshipped = (
         "These orders are PAID but have NOT shipped yet (snapshot time above). "
         "Anything not listed here has already shipped.\n\n"
     )
-    if unshipped and _write(cfg, "ebay_unshipped.md", key_unshipped + unshipped):
+    if unshipped and _write(cfg, "ebay_unshipped.md", key_unshipped + _for_phone(unshipped)):
         summary.append("wrote ebay_unshipped.md")
     body, note = _square_orders(cfg)
     summary.append(note)
     if body:
-        summary.append("wrote square_orders.md" if _write(cfg, "square_orders.md", body) else "square orders empty")
+        summary.append("wrote square_orders.md" if _write(cfg, "square_orders.md", _for_phone(body)) else "square orders empty")
     for line in summary:
         log(f"[callscoot] index: {line}")
     return summary
