@@ -191,6 +191,9 @@ folder is the difference between a receptionist and a liability:
 If the answer isn't on file, the bot says so and takes a message. It does not
 hallucinate prices to paying customers.
 
+How to write the price list, the hours, and the lines the model is not allowed
+to rewrite: [Business guardrails](docs/business-guardrails.md).
+
 ## Run it
 
 ```bash
