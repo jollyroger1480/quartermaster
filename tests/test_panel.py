@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from callscoot import audio, errors
-from callscoot.controls import CallControls
+from callscoot.controls import CallControls, secretary_flag_path
 from callscoot.gui import _PAGE, handle_act, link_status, read_form, reconnect_link
 
 
@@ -16,6 +16,9 @@ class PanelTests(unittest.TestCase):
         self.assertIn("LISTEN LIVE", _PAGE)
         self.assertIn("URLSearchParams", _PAGE)
         self.assertNotIn("FormData", _PAGE)
+        self.assertIn("TURN SECRETARY OFF", _PAGE)
+        self.assertIn("act('secretary')", _PAGE)
+        self.assertIn("does not shut it off", _PAGE)
 
     def test_browser_multipart_click_is_read(self):
         raw = (
@@ -114,6 +117,38 @@ class PanelTests(unittest.TestCase):
         self.assertIn("ADB down", text)
         self.assertIn("headset missing", text)
         self.assertFalse(c.pending_join)
+
+    def test_secretary_off_blocks_the_bot_and_comes_back(self):
+        d = tempfile.mkdtemp()
+        c = CallControls()
+        cfg = {"logs": {"dir": d}}
+        path = secretary_flag_path(cfg)
+        off = handle_act(cfg, c, "secretary")
+        self.assertIn("New rings are not answered", off)
+        self.assertFalse(c.snapshot()["secretary"])
+        self.assertFalse(c.pending_join)
+        self.assertTrue(os.path.exists(path))
+        ai = handle_act(cfg, c, "ai")
+        self.assertIn("secretary is off", ai)
+        self.assertFalse(c.pending_join)
+        handle_act(cfg, c, "rec")
+        self.assertTrue(c.pending_record)
+        on = handle_act(cfg, c, "secretary")
+        self.assertIn("secretary on", on)
+        self.assertTrue(c.snapshot()["secretary"])
+        self.assertFalse(os.path.exists(path))
+        self.assertEqual(c.drain(), [("rec_on", None)])
+
+    def test_secretary_off_quiets_the_bot_without_hangup(self):
+        c = CallControls()
+        c.on_call = True
+        c.copilot = False
+        c.pending_join = True
+        note = c.toggle_secretary(None)
+        self.assertIn("line stays up", note)
+        self.assertFalse(c.pending_join)
+        self.assertFalse(c.secretary)
+        self.assertEqual(c.drain(), [("ai_drop", None)])
 
     def test_reconnect_helper_does_not_answer(self):
         c = CallControls()

@@ -2,7 +2,7 @@
 
 Served by the watch process on 127.0.0.1 only (gui.port, default 8795):
   GET  /          the button page (auto-refreshing state)
-  POST /act       one action: rec | ai | hangup | say | reconnect | status | listen
+  POST /act       one action: rec | ai | hangup | say | reconnect | status | listen | secretary
   GET  /state     JSON snapshot
 Stdlib http.server only; no LAN exposure, no auth — it never leaves localhost.
 """
@@ -15,6 +15,7 @@ from urllib.parse import parse_qs
 
 from . import audio, errors, phone
 from .config import dig
+from .controls import secretary_flag_path
 
 import os
 
@@ -103,6 +104,8 @@ def handle_act(cfg, controls, op, text=""):
             note = link_status(cfg, controls)
         elif op == "listen":
             note = audio.live.set(cfg, not audio.live.on)
+        elif op == "secretary":
+            note = controls.toggle_secretary(secretary_flag_path(cfg))
     except Exception as e:
         errors.record(f"panel-{op or 'act'}", e, cfg)
         note = f"{op or 'act'} failed: {e}"

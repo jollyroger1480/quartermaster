@@ -7,8 +7,11 @@ Anything that must act mid-call (record arm, copilot toggle, hangup, spoken
 text) goes through here — never through shared mutable globals scattered
 across modules.
 """
+import os
 import queue
 import threading
+
+from .config import dig
 
 
 # Commands the session loop understands.
@@ -18,6 +21,14 @@ AI_TAKEOVER = "ai_takeover"      # in copilot mode: resume autonomous replies
 AI_DROP = "ai_drop"              # in autonomous mode: stop speaking, keep transcribing
 HANGUP = "hangup"
 SAY_TO_CALLER = "say_to_caller"  # payload = text, spoken into the call verbatim
+
+
+def secretary_flag_path(cfg):
+    """Off-switch file under logs. Absent means the secretary is on."""
+    d = os.path.expanduser(dig(cfg or {}, "logs.dir", "") or "")
+    if not d:
+        return None
+    return os.path.join(d, "secretary.off")
 
 
 class CallControls:
@@ -31,6 +42,7 @@ class CallControls:
         self.recording = False
         self.pending_record = False    # record the next offhook call, do not start the bot
         self.pending_join = False      # AI join requested while no session runs
+        self.secretary = True          # watcher still answers new rings and the bot talks
         self.call_number = "unknown"
         self.session_started = 0.0
         self.last_event = ""
@@ -63,8 +75,11 @@ class CallControls:
         return "record armed, AI off"
 
     def toggle_ai(self):
-        """Start or stop the bot talking. Separate from recording."""
+        """Join or quiet the bot on a call already up. Does not stop the secretary."""
         with self._lock:
+            if not self.secretary:
+                self.last_event = "secretary is off"
+                return "secretary is off. Turn secretary on before the bot can talk."
             on_call, copilot = self.on_call, self.copilot
         if not on_call:
             if self.pending_join:
@@ -76,6 +91,44 @@ class CallControls:
             return "AI will join and talk"
         self.post(AI_TAKEOVER if copilot else AI_DROP)
         return "bot took over the call" if copilot else "bot stepped back (copilot)"
+
+    def load_secretary(self, flag_path):
+        """A leftover off-flag means the secretary stays off across a restart."""
+        if flag_path and os.path.exists(flag_path):
+            with self._lock:
+                self.secretary = False
+
+    def toggle_secretary(self, flag_path=None):
+        """Stop or resume auto-answer. The panel stays up. A live line is not hung up."""
+        with self._lock:
+            self.secretary = not self.secretary
+            enabled = self.secretary
+            quiet_bot = (not enabled) and self.on_call and not self.copilot
+            if not enabled:
+                self.pending_join = False
+                if quiet_bot:
+                    self.copilot = True
+        if flag_path:
+            try:
+                if enabled:
+                    os.remove(flag_path)
+                else:
+                    os.makedirs(os.path.dirname(flag_path), exist_ok=True)
+                    with open(flag_path, "w", encoding="utf-8") as fh:
+                        fh.write("off\n")
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+        if quiet_bot:
+            self.post(AI_DROP)
+            msg = "secretary off. Bot is quiet on this call. The line stays up. New rings are not answered."
+        elif not enabled:
+            msg = "secretary off. New rings are not answered."
+        else:
+            msg = "secretary on. New rings are answered and the bot talks."
+        self.note_event(msg)
+        return msg
 
     # ── consumer (the session loop) ──────────────────────────────────────
     def drain(self):
@@ -101,6 +154,7 @@ class CallControls:
                 "recording": self.recording,
                 "pending_record": self.pending_record,
                 "pending_join": self.pending_join,
+                "secretary": self.secretary,
                 "number": self.call_number,
                 "started": self.session_started,
                 "last_event": self.last_event,

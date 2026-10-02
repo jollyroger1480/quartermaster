@@ -9,7 +9,7 @@ import wave
 
 from . import agent, audio, errors, gui, notify, orders_index, phone, sms, stt, tts
 from .config import dig
-from .controls import CallControls
+from .controls import CallControls, secretary_flag_path
 
 
 def _stamp():
@@ -44,6 +44,7 @@ def watch(cfg):
     ring_delay = float(dig(cfg, "call.ring_delay_s", 3.0))
     refresh_s = float(dig(cfg, "orders.refresh_minutes", 15)) * 60
     controls = CallControls()
+    controls.load_secretary(secretary_flag_path(cfg))
     notify.start_control_listener(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     gui.start_server(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     try:
@@ -51,11 +52,10 @@ def watch(cfg):
     except phone.PhoneError as e:
         print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
         errors.record("adb", e, cfg)
-    print(f"[{_stamp()}] watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}. Ctrl+C to stop.")
-    errors.info(
-        f"watching — auto-answer {'everyone' if answer_unknown else 'allowlist only'}",
-        cfg,
-    )
+    who = "everyone" if answer_unknown else "allowlist only"
+    sec = "on" if controls.secretary else "off"
+    print(f"[{_stamp()}] watching — secretary {sec}, auto-answer {who}. Ctrl+C to stop.")
+    errors.info(f"watching — secretary {sec}, auto-answer {who}", cfg)
     _warmup(cfg)
     prev = 0
     last_index = 0.0
@@ -87,7 +87,12 @@ def watch(cfg):
         if s == 2 and not controls.on_call and (
             controls.pending_join or controls.pending_record
         ):
-            speak = controls.pending_join
+            speak = bool(controls.pending_join and controls.secretary)
+            if controls.pending_join and not controls.secretary and not controls.pending_record:
+                controls.pending_join = False
+                errors.info("AI join ignored. Secretary is off.", cfg)
+                prev = s
+                continue
             controls.pending_join = False
             controls.pending_record = False
             print(f"[{_stamp()}] {'AI' if speak else 'record-only'} join for live call {num or 'unknown'}")
@@ -104,6 +109,12 @@ def watch(cfg):
             continue
         if s == 1 and prev != 1:
             label = num or "unknown number"
+            if not controls.secretary:
+                print(f"[{_stamp()}] RINGING {label}. Secretary is off, not answering.")
+                errors.info(f"RINGING {label}. Secretary is off, not answering.", cfg)
+                prev = s
+                time.sleep(1)
+                continue
             print(f"[{_stamp()}] RINGING {label}")
             errors.info(f"RINGING {label}", cfg)
             blacklist = {phone.last10(b) for b in (dig(cfg, "spam.blacklist", []) or []) if b}
