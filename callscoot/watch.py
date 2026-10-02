@@ -1,13 +1,15 @@
 """Watch mode: poll telephony state, auto-answer allowed callers, hand the call
-to the agent session."""
+to the agent session. Also hosts the control surfaces (Telegram listener, local
+web GUI) and honors AI-join requests for calls the Cap'n took himself."""
 import datetime
 import os
 import tempfile
 import time
 import wave
 
-from . import agent, audio, errors, orders_index, phone, sms, stt, tts
+from . import agent, audio, errors, gui, notify, orders_index, phone, sms, stt, tts
 from .config import dig
+from .controls import CallControls
 
 
 def _stamp():
@@ -41,6 +43,9 @@ def watch(cfg):
     answer_unknown = bool(dig(cfg, "phone.answer_unknown", True))
     ring_delay = float(dig(cfg, "call.ring_delay_s", 3.0))
     refresh_s = float(dig(cfg, "orders.refresh_minutes", 15)) * 60
+    controls = CallControls()
+    notify.start_control_listener(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
+    gui.start_server(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     try:
         phone.ensure_connected(cfg)
     except phone.PhoneError as e:
@@ -78,6 +83,21 @@ def watch(cfg):
             except Exception as e:
                 print(f"[{_stamp()}] [ index error: {e}")
                 errors.record("orders-index", e, cfg)
+        # AI jump-in: the Cap'n already has a live call and asked for the bot
+        if s == 2 and not controls.on_call and controls.pending_join:
+            controls.pending_join = False
+            print(f"[{_stamp()}] AI jump-in requested for live call {num or 'unknown'}")
+            notify.send_live_call_card(cfg, num or "unknown",
+                                       log=lambda m: print(f"[{_stamp()}] {m}"))
+            try:
+                agent.run_session(cfg, number=num or "unknown", controls=controls,
+                                  join_live=True)
+            except Exception as e:
+                print(f"[{_stamp()}] [ join-session error: {e}")
+                errors.record("join-session", e, cfg)
+            prev = phone.call_state()["state"]
+            print("[callscoot] idle again")
+            continue
         if s == 1 and prev != 1:
             label = num or "unknown number"
             print(f"[{_stamp()}] RINGING {label}")
@@ -106,8 +126,10 @@ def watch(cfg):
                 print("[callscoot]   caller hung up before answer")
                 prev = st2["state"]
                 continue
+            notify.send_live_call_card(cfg, num or "unknown",
+                                       log=lambda m: print(f"[{_stamp()}] {m}"))
             try:
-                agent.run_session(cfg, number=num or "unknown")
+                agent.run_session(cfg, number=num or "unknown", controls=controls)
             except Exception as e:
                 print(f"[{_stamp()}] [ session error: {e}")
                 errors.record("call-session", e, cfg)

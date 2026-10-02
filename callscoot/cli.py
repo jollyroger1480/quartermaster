@@ -11,8 +11,7 @@ from .config import app_home, dig, find_config, load
 
 
 def load_env_files():
-    """Load provider keys from $CALLSCOOT_HOME/.env.
-    Never overrides variables already set in the environment."""
+    """Load provider keys from $CALLSCOOT_HOME/.env."""
     path = os.path.join(app_home(), ".env")
     if os.path.isfile(path):
         for line in open(path, encoding="utf-8", errors="replace"):
@@ -30,7 +29,6 @@ def load_env_files():
                 v = v[1:-1]
             if k and k not in os.environ:
                 os.environ[k] = v
-
 
 def cmd_doctor(cfg):
     results = []
@@ -260,7 +258,7 @@ def cmd_ask(cfg, question):
 def main(argv=None):
     load_env_files()
     ap = argparse.ArgumentParser(prog="callscoot",
-                                 description="Quartermaster — Bluetooth HFP phone & SMS receptionist (voice via bluez-alsa/PipeWire, control via ADB)")
+                                 description="Bluetooth HFP phone receptionist (voice via BT, control via wireless ADB)")
     ap.add_argument("--config", help="path to callscoot.toml")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor", help="validate every stage, print next steps")
@@ -279,8 +277,16 @@ def main(argv=None):
     p = sub.add_parser("gaming"); p.add_argument("mode", nargs="?", choices=["on", "off", "toggle", "status"],
                                                 help="kokoro off for gaming (piper voice), on to restore")
     sub.add_parser("unlock", help="wake + unlock the phone with the saved PIN")
+    sub.add_parser("gui", help="open the call-controls web panel (watch must be running)")
     args = ap.parse_args(argv)
     cfg = load(args.config)
+
+    if args.cmd == "gui":
+        import webbrowser
+        url = f"http://127.0.0.1:{dig(cfg, 'gui.port', 8790)}"
+        print(f"opening {url} (the panel is served by `callscoot watch`)")
+        webbrowser.open(url)
+        return 0
 
     if args.cmd == "unlock":
         phone.ensure_connected(cfg)

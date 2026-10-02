@@ -31,6 +31,15 @@ voicemail_reply = "I'll make sure the owner follows up with you. Goodbye for now
 arrange_reply = "I can't set up a visit or give out a home address. I'll pass your message to the owner. I've got your number from caller ID."
 spam_reply = "Not interested — please remove this number from your list. Goodbye."
 thinking_cue = true       # soft blip while the bot thinks between turns
+join_reply = "This is the shop assistant — I can help from here."
+                          # spoken when the bot jumps into a call you already took
+                          # (Telegram 🤖 button, /ai, or the web panel)
+
+[gui]
+# Local push-button panel for the live call: record / AI take over / hang up /
+# speak-to-caller. Served by `callscoot watch` on localhost only.
+enabled = true
+port = 8790
 
 [alerts]
 telegram = true           # push a digest to Telegram after every message-taking call
@@ -54,6 +63,7 @@ sco_rate = 16000
 bt_sink = ""
 bt_source = ""
 sample_rate = 16000       # capture sample rate fed to whisper
+local_mic = "default"     # your own mic for the Julian track of call_full recordings
 record_max_s = 14         # max seconds per caller turn
 record_silence_s = 1.5    # caller considered done after this much silence
 record_min_s = 0.45       # ignore sub-this-length blips

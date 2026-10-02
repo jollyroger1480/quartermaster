@@ -15,6 +15,7 @@ import select
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import wave
 
@@ -30,6 +31,7 @@ HFP_PROFILES = [
     "headset_audio_gateway", "hfp-hf", "hfp-ag", "headset",
 ]
 
+SPEAK = {}
 
 
 def _run(cmd, timeout=15):
@@ -57,7 +59,7 @@ def bluealsa_ready(cfg):
     pcm = bluealsa_pcm(cfg)
     if not pcm:
         return False
-    mac = pcm.split("DEV=")[-1].split(",")[0]          # your phone MAC (see callscoot.example.toml)
+    mac = pcm.split("DEV=")[-1].split(",")[0]          # B0:C2:C7:C2:F5:9D
     want = "dev_" + mac.replace(":", "_").lower()      # BlueZ object path form
     for cli in ("bluealsactl", "bluealsa-cli"):
         if shutil.which(cli):
@@ -169,7 +171,7 @@ def _read_chunk(stream, n, timeout):
     """Bytes from a capture pipe, b'' on EOF, None when nothing arrived.
 
     stdout.read() waits for a full chunk. A stalled SCO link never delivers
-    one, so the utterance clock below it never runs and arecord stays open
+    one, so the utterance clock below never runs and arecord stays open
     after the caller is gone.
     """
     if stream is None:
@@ -180,8 +182,14 @@ def _read_chunk(stream, n, timeout):
     return os.read(stream.fileno(), n)
 
 
-def record_utterance(cfg, source=None):
-    """Record until the caller stops talking. Returns {'path','seconds'} or None."""
+def record_utterance(cfg, source=None, session_sink=None):
+    """Record until the caller stops talking. Returns {'path','seconds'} or None.
+
+    session_sink: optional callable(raw_bytes) — every real (split) PCM chunk is
+    also handed to it while the VAD loop runs, feeding the session-wide
+    recorder. The sink stamps its own wall-clock offsets; this function stays
+    agnostic.
+    """
     rate = dig(cfg, "audio.sample_rate", 16000)
     max_s = dig(cfg, "audio.record_max_s", 14)
     silence_s = dig(cfg, "audio.record_silence_s", 1.35)
@@ -219,6 +227,11 @@ def record_utterance(cfg, source=None):
             if len(pending) < chunk_bytes:
                 continue
             raw, pending = pending[:chunk_bytes], pending[chunk_bytes:]
+            if session_sink is not None:
+                try:
+                    session_sink(raw)
+                except Exception:
+                    pass
             elapsed = time.monotonic() - t0
             a = array.array("h")
             a.frombytes(raw)
@@ -339,7 +352,218 @@ def play_to_sink(cfg, wav_path, sink=None):
         p = _run(["pw-play", "--target", sink, wav_path], timeout=30)
         if p.returncode != 0:
             p = _run(["paplay", "--device=" + sink, wav_path], timeout=30)
-        if p.returncode != 0:
-            raise AudioError(f"playback failed: {p.stderr.strip()[:200]}")
+            if p.returncode != 0:
+                raise AudioError(f"playback failed: {p.stderr.strip()[:200]}")
     except subprocess.TimeoutExpired:
         raise AudioError("playback timed out — call audio link probably dropped")
+
+
+# ── Session recorder: the whole call, three parties ──────────────────────────
+#
+# Caller = tee of the SCO downlink (fed from record_utterance's session_sink),
+# Bot    = the TTS wavs at the moments play_to_sink ran,
+# Julian = the local PC mic, captured ONLY while the recorder is armed
+#          (he is on the call via the PC-as-headset; PC mic = SCO uplink).
+# At finalize, the three tracks are written at their wall-clock offsets and
+# muxed to one 3-channel ogg (vorbis; opus channel mapping tops out at stereo).
+
+class MicRecorder:
+    """Local PC-mic capture thread writing (offset, raw) chunks. 16 kHz s16."""
+
+    def __init__(self, cfg, rate=16000):
+        self.rate = rate
+        self._chunks = []
+        self._proc = None
+        self._t0 = None
+        self._lock = threading.Lock()
+        self._thread = None
+        self.error = None
+        self._cfg = cfg
+
+    def start(self, t0):
+        import threading as _t
+        self._t0 = t0
+        dev = dig(self._cfg, "audio.local_mic", "default")
+        cmd = ["arecord", "-D", dev, "-t", "raw", "-f", "S16_LE",
+               "-r", str(self.rate), "-c", "1", "-q"]
+        if not shutil.which("arecord"):
+            cmd = ["parecord", "--raw", "--format=s16le",
+                   f"--rate={self.rate}", "--channels=1", f"--device={dev}", "-"]
+        try:
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                          stderr=subprocess.DEVNULL, bufsize=0)
+        except OSError as e:
+            self.error = str(e)
+            return False
+
+        def _run():
+            chunk = (self.rate // 10) * 2  # 100 ms
+            while self._proc and self._proc.stdout:
+                got = self._proc.stdout.read(chunk)
+                if not got:
+                    break
+                with self._lock:
+                    self._chunks.append((time.monotonic() - self._t0, got))
+
+        self._thread = _t.Thread(target=_run, name="mic-rec", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self):
+        if self._proc:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+            self._proc = None
+
+    def chunks(self):
+        with self._lock:
+            return list(self._chunks)
+
+
+class SessionRecorder:
+    """Arms the three-party capture for one call. Created per session; armed
+    on demand from any control surface (REC_ON), finalized at session end."""
+
+    def __init__(self, cfg, t0):
+        self.cfg = cfg
+        self.t0 = t0
+        self.rate = int(dig(cfg, "audio.sample_rate", 16000))
+        self.caller = []          # (offset, raw)
+        self.bot = []             # (offset, wav_path-before-delete)
+        self.mic = None           # MicRecorder, started on arm
+        self.armed = False
+        self.finished_path = None
+        self._lock = threading.Lock()
+
+    def arm(self, log=print):
+        if self.armed:
+            return
+        self.armed = True
+        self.mic = MicRecorder(self.cfg, rate=self.rate)
+        if not self.mic.start(self.t0):
+            log(f"recorder: local mic unavailable ({self.mic.error}) — recording caller+bot only")
+        log("recording ON (caller + bot + local mic)")
+
+    def disarm(self, log=print):
+        if not self.armed:
+            return
+        self.armed = False
+        if self.mic:
+            self.mic.stop()
+        log("recording OFF")
+
+    def add_caller(self, raw):
+        if self.armed:
+            with self._lock:
+                self.caller.append((time.monotonic() - self.t0, raw))
+
+    def add_bot(self, wav_path):
+        """Snapshot a bot TTS wav into the recording (copied — caller deletes)."""
+        if self.armed:
+            snap = wav_path + ".rec.wav"
+            try:
+                shutil.copyfile(wav_path, snap)
+                with self._lock:
+                    self.bot.append((time.monotonic() - self.t0, snap))
+            except OSError:
+                pass
+
+    def _track_wav(self, path, chunks, seconds):
+        """Write one mono s16 wav of `seconds` length, chunks at their offsets."""
+        total = int(seconds * self.rate) * 2
+        import wave as _wave
+        w = _wave.open(path, "wb")
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(self.rate)
+        buf = bytearray(b"\x00\x00" * int(seconds * self.rate))
+        for off, raw in chunks:
+            i = int(off * self.rate) * 2
+            if i < 0 or i + len(raw) > len(buf):
+                continue
+            buf[i:i + len(raw)] = raw
+        w.writeframes(bytes(buf))
+        w.close()
+        del buf
+        return path
+
+    def _bot_track_wav(self, path, seconds):
+        """Bot track: TTS wavs resampled to the SCO rate and placed at offsets."""
+        import wave as _wave
+        w = _wave.open(path, "wb")
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(self.rate)
+        buf = bytearray(b"\x00\x00" * int(seconds * self.rate))
+        tmps = []
+        for off, wav_path in self.bot:
+            conv = wav_path + f".{self.rate}.wav"
+            if shutil.which("ffmpeg"):
+                p = _run(["ffmpeg", "-y", "-i", wav_path, "-ar", str(self.rate),
+                          "-ac", "1", conv], timeout=60)
+                if p.returncode != 0:
+                    continue
+            else:
+                conv = wav_path
+            tmps.append(conv)
+            try:
+                r = _wave.open(conv, "rb")
+                frames = r.readframes(r.getnframes())
+                r.close()
+            except Exception:
+                continue
+            i = int(off * self.rate) * 2
+            if i + len(frames) <= len(buf):
+                buf[i:i + len(frames)] = frames
+        w.writeframes(bytes(buf))
+        w.close()
+        del buf
+        for t in tmps:
+            try:
+                os.unlink(t)
+            except OSError:
+                pass
+        return path
+
+    def finalize(self, session_dir, log=print):
+        """Stop capture and mux caller|bot|Julian into one 3-track ogg."""
+        self.disarm(log)
+        if not (self.caller or self.bot or (self.mic and self.mic.chunks())):
+            log("recorder: nothing captured — no call_full.ogg")
+            return None
+        if not shutil.which("ffmpeg"):
+            log("recorder: ffmpeg missing — cannot mux call_full.ogg")
+            return None
+        seconds = time.monotonic() - self.t0
+        c = self._track_wav(os.path.join(session_dir, "_tr_caller.wav"),
+                            self.caller, seconds)
+        b = self._bot_track_wav(os.path.join(session_dir, "_tr_bot.wav"), seconds)
+        j = self._track_wav(os.path.join(session_dir, "_tr_julian.wav"),
+                            self.mic.chunks() if self.mic else [], seconds)
+        dest = os.path.join(session_dir, "call_full.ogg")
+        p = _run(["ffmpeg", "-y", "-i", c, "-i", b, "-i", j,
+                  "-filter_complex", "[0:a][1:a][2:a]amerge=inputs=3[a]",
+                  "-map", "[a]", "-c:a", "libvorbis", "-q:a", "3", dest],
+                 timeout=120)
+        for t in (c, b, j):
+            try:
+                os.unlink(t)
+            except OSError:
+                pass
+        for _, snap in self.bot:
+            try:
+                os.unlink(snap)
+            except OSError:
+                pass
+        if p.returncode == 0 and os.path.isfile(dest):
+            self.finished_path = dest
+            log(f"recording saved: {dest}")
+            return dest
+        log(f"recorder: mux failed: {p.stderr.strip()[:150]}")
+        return None

@@ -1,5 +1,9 @@
 """The receptionist session: after answering, run a turn loop —
-record caller → STT → vault RAG → free-cloud LLM → piper TTS → back into the call."""
+record caller → STT → vault RAG → free-cloud LLM → piper TTS → back into the call.
+
+The session also drains the shared controls bus every turn: Telegram buttons /
+web GUI / CLI can arm the three-party recorder, toggle copilot mode (bot silent,
+transcribe-only), speak arbitrary text to the caller, or hang up."""
 import datetime
 import os
 import re
@@ -9,6 +13,8 @@ import time
 
 from . import audio, llm, phone, stt, tts, vault_rag
 from .config import app_home, dig
+from .controls import (AI_DROP, AI_TAKEOVER, HANGUP, REC_OFF, REC_ON,
+                       SAY_TO_CALLER)
 
 END_RE = re.compile(r"\b(bye|goodbye|good[\s-]?bye|hang up)\b", re.I)
 ESCALATE_RE = re.compile(
@@ -132,8 +138,14 @@ def _archive(wav_path, dest_no_ext):
     return dest
 
 
-def run_session(cfg, number="unknown", log=print):
-    """Answer (if ringing) and handle the whole call. Returns (transcript, flagged)."""
+def run_session(cfg, number="unknown", log=print, controls=None, join_live=False):
+    """Answer (if ringing) and handle the whole call. Returns (transcript, flagged).
+
+    controls: shared CallControls bus — enables Telegram/GUI/CLI control of the
+    live session (record, copilot toggle, say-to-caller, hangup).
+    join_live: skip answering; a human already has the call offhook and asked
+    the bot to jump in.
+    """
     max_dur = dig(cfg, "call.max_duration_s", 600)
     max_turns = dig(cfg, "call.max_turns", 30)
     greeting = dig(cfg, "call.greeting", "Thanks for calling. How can I help you?")
@@ -143,26 +155,40 @@ def run_session(cfg, number="unknown", log=print):
                     f"I'll make sure {owner} follows up with you. Goodbye for now.")
 
     t0 = time.monotonic()
-    st = phone.call_state()
-    if st["state"] == 1:
-        code = phone.answer(cfg)
-        log(f"answered ({code})")
-        time.sleep(dig(cfg, "call.answer_delay_ms", 1200) / 1000)
+    if not join_live:
+        st = phone.call_state()
+        if st["state"] == 1:
+            code = phone.answer(cfg)
+            log(f"answered ({code})")
+            time.sleep(dig(cfg, "call.answer_delay_ms", 1200) / 1000)
     if phone.call_state()["state"] != 2:
         raise AgentError("no active call (state != offhook)")
 
     audio.wait_for_hfp(cfg)
     session_dir = _session_dir(cfg, number, datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
-    transcript = [("meta", f"call from {number} at {datetime.datetime.now():%Y-%m-%d %H:%M:%S}")]
+    transcript = [("meta", f"call from {number} at {datetime.datetime.now():%Y-%m-%d %H:%M:%S}"
+                           + (" (bot joined a live call)" if join_live else ""))]
     history = []
     flagged = False
     audio_n = [0]
+    copilot = bool(join_live)   # joined live = silent transcriber until told to speak
+    recorder = audio.SessionRecorder(cfg, t0)
+    hangup_now = [False]
 
-    def say(text):
+    if controls is not None:
+        controls._set(on_call=True, copilot=copilot, call_number=number,
+                      session_started=time.time())
+        controls.note_event("bot joined live call" if join_live else "call answered")
+
+    def say(text, force=False):
         wav = tts.synth(cfg, text)
         try:
             _archive(wav, os.path.join(session_dir, f"bot_{audio_n[0]:02d}"))
             audio_n[0] += 1
+            recorder.add_bot(wav)
+            if copilot and not force:
+                transcript.append(("note", f"(held back in copilot: {text})"))
+                return
             try:
                 audio.play_to_sink(cfg, wav)
             except Exception as e:
@@ -173,20 +199,66 @@ def run_session(cfg, number="unknown", log=print):
             except OSError:
                 pass
 
+    def drain_controls():
+        """Act on queued control commands. Returns False when hangup requested."""
+        nonlocal copilot
+        if controls is None:
+            return True
+        for cmd, payload in controls.drain():
+            if cmd == REC_ON:
+                recorder.arm(log)
+                controls._set(recording=True)
+                transcript.append(("note", "recording armed (caller + bot + Julian)"))
+            elif cmd == REC_OFF:
+                recorder.disarm(log)
+                controls._set(recording=False)
+                transcript.append(("note", "recording stopped"))
+            elif cmd == AI_DROP:
+                copilot = True
+                controls._set(copilot=True)
+                transcript.append(("note", "bot stepped back — Cap'n has the call"))
+                log("copilot mode: bot silent, still transcribing + recording")
+            elif cmd == AI_TAKEOVER:
+                copilot = False
+                controls._set(copilot=False)
+                transcript.append(("note", "bot took over the call"))
+                say("This is the shop assistant again — go ahead.", force=True)
+            elif cmd == SAY_TO_CALLER:
+                text = (payload or "").strip()
+                if text:
+                    transcript.append(("julian→caller", text))
+                    say(text, force=True)
+            elif cmd == HANGUP:
+                hangup_now[0] = True
+                transcript.append(("note", "hangup requested from controls"))
+                return False
+        return not hangup_now[0]
+
     try:
-        say(greeting)
-        transcript.append(("agent", greeting))
-        log(f"agent: {greeting}")
+        if join_live:
+            say(dig(cfg, "call.join_reply",
+                    "This is the shop assistant — I can help from here."), force=True)
+            transcript.append(("agent", "bot joined the call"))
+        else:
+            say(greeting)
+            transcript.append(("agent", greeting))
+            log(f"agent: {greeting}")
         empty = 0
         turns = 0
-        while time.monotonic() - t0 < max_dur and turns < max_turns:
+        while time.monotonic() - t0 < max_dur and (copilot or turns < max_turns):
+            if not drain_controls():
+                break
             if phone.call_state().get("state") != 2:
                 log("caller hung up")
                 break
-            rec = audio.record_utterance(cfg)
+            rec = audio.record_utterance(cfg, session_sink=recorder.add_caller
+                                         if recorder.armed else None)
             utt_path = rec["path"] if rec else None
             try:
                 if utt_path is None:
+                    if copilot:
+                        # Cap'n has the call: silence is his business, stay quiet
+                        continue
                     empty += 1
                     if empty == 1:
                         say("Are you still there?")
@@ -201,6 +273,8 @@ def run_session(cfg, number="unknown", log=print):
                     _archive(utt_path, os.path.join(session_dir, f"caller_{turns:02d}"))
                     os.unlink(utt_path)
             if not caller_text:
+                if copilot:
+                    continue
                 empty += 1
                 if empty >= 2:
                     say(voicemail)
@@ -212,7 +286,7 @@ def run_session(cfg, number="unknown", log=print):
             transcript.append(("caller", caller_text))
             log(f"caller: {caller_text}")
 
-            if dig(cfg, "call.thinking_cue", True):
+            if dig(cfg, "call.thinking_cue", True) and not copilot:
                 try:
                     audio.play_to_sink(cfg, audio.thinking_wav(cfg))
                 except Exception as e:
@@ -220,6 +294,11 @@ def run_session(cfg, number="unknown", log=print):
                     errors.record("thinking-cue", e, cfg)
 
             if dig(cfg, "spam.hangup_on_scam", True) and SPAM_RE.search(caller_text):
+                if copilot:
+                    # Cap'n has the call — flag it, never hang up on his behalf
+                    transcript.append(("note", "SPAM/telemarketer script detected (copilot — not acted on)"))
+                    log("spam detected in copilot — flagged only")
+                    continue
                 # scam/telemarketer script detected — decline, hang up, no alert
                 decline = dig(cfg, "call.spam_reply",
                               "Not interested — please remove this number. Goodbye.")
@@ -229,12 +308,20 @@ def run_session(cfg, number="unknown", log=print):
                 break
 
             if END_RE.search(caller_text) and len(caller_text.split()) <= 6:
+                if copilot:
+                    transcript.append(("note", "caller said goodbye (copilot — Cap'n wraps up)"))
+                    continue
                 say(farewell)
                 transcript.append(("agent", farewell))
                 break
 
             escalate = bool(ESCALATE_RE.search(caller_text))
             flagged |= escalate
+            if copilot:
+                # Cap'n has the call: transcribe + record only, no LLM churn
+                if escalate:
+                    transcript.append(("note", "escalation topic (copilot — flagged for Julian)"))
+                continue
             if ARRANGE_RE.search(caller_text) and not SALVAGE_RE.search(caller_text):
                 # hard guardrail: never negotiate real-world arrangements, take a message
                 reply = dig(cfg, "call.arrange_reply",
@@ -259,11 +346,31 @@ def run_session(cfg, number="unknown", log=print):
             log(f"agent[{provider}]: {reply}")
             say(reply)
     finally:
+        # Copilot respects the Cap'n: if he still has the call, never hang up
+        # on him — the bot loop just ends and keeps its recordings.
+        still_offhook = False
         try:
-            phone.hangup()
-            log("hung up")
+            still_offhook = phone.call_state().get("state") == 2
+        except Exception:
+            pass
+        if not copilot or not still_offhook:
+            try:
+                phone.hangup()
+                log("hung up")
+            except Exception as e:
+                log(f"hangup problem: {e}")
+        else:
+            log("copilot end — call left up for the Cap'n")
+        rec_path = None
+        try:
+            rec_path = recorder.finalize(session_dir, log)
+            if rec_path:
+                transcript.append(("note", f"full recording: {rec_path}"))
         except Exception as e:
-            log(f"hangup problem: {e}")
+            log(f"recorder finalize problem: {e}")
+        if controls is not None:
+            controls._set(on_call=False, copilot=False, recording=False)
+            controls.note_event("call ended")
         path = _save_transcript(session_dir, transcript, flagged)
         log(f"transcript: {path}")
         spam = any(w == "note" and "SPAM" in t for w, t in transcript)
