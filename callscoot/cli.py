@@ -7,12 +7,24 @@ import sys
 import time
 
 from . import agent, audio, llm, orders_index, phone, stt, tts, vault_rag, watch
-from .config import app_home, dig, find_config, load
+from .config import add_llm_provider, app_home, dig, find_config, load
 
 
-def load_env_files():
-    """Load provider keys from $CALLSCOOT_HOME/.env."""
-    path = os.path.join(app_home(), ".env")
+def load_env_files(config_path=None):
+    """Load provider keys from .env beside the config, then $CALLSCOOT_HOME/.env."""
+    paths = []
+    if config_path:
+        paths.append(os.path.join(os.path.dirname(os.path.abspath(config_path)), ".env"))
+    paths.append(os.path.join(app_home(), ".env"))
+    seen = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        _load_env_file(path)
+
+
+def _load_env_file(path):
     if os.path.isfile(path):
         for line in open(path, encoding="utf-8", errors="replace"):
             line = line.strip()
@@ -256,7 +268,6 @@ def cmd_ask(cfg, question):
 
 
 def main(argv=None):
-    load_env_files()
     ap = argparse.ArgumentParser(prog="callscoot",
                                  description="Bluetooth HFP phone receptionist (voice via BT, control via wireless ADB)")
     ap.add_argument("--config", help="path to callscoot.toml")
@@ -274,11 +285,35 @@ def main(argv=None):
     sub.add_parser("talk", help="human-talk loopbacks (mic→call, caller→speakers)")
     sub.add_parser("listen", help="record one utterance from the phone and transcribe it")
     p = sub.add_parser("ask"); p.add_argument("question", nargs="+")
+    p = sub.add_parser("llm-add", help="add an OpenAI-compatible model and try it first")
+    p.add_argument("--name", required=True)
+    p.add_argument("--base-url", required=True)
+    p.add_argument("--model", required=True)
+    p.add_argument("--api-key-env", required=True)
+    p.add_argument("--api-key", default="", help="stored in .env, not in the toml")
     p = sub.add_parser("gaming"); p.add_argument("mode", nargs="?", choices=["on", "off", "toggle", "status"],
                                                 help="kokoro off for gaming (piper voice), on to restore")
     sub.add_parser("unlock", help="wake + unlock the phone with the saved PIN")
     sub.add_parser("gui", help="open the call-controls web panel (watch must be running)")
     args = ap.parse_args(argv)
+    cfg_path = find_config(args.config)
+    load_env_files(cfg_path)
+    if args.cmd == "llm-add":
+        if not cfg_path:
+            print("no callscoot.toml yet. Copy callscoot.example.toml to callscoot.toml first.")
+            return 1
+        try:
+            side = add_llm_provider(
+                cfg_path, args.name, args.base_url, args.model,
+                args.api_key_env, args.api_key,
+            )
+        except ValueError as e:
+            print(e)
+            return 1
+        print(f"added {args.name}. It is tried first.")
+        print(f"file: {side}")
+        print('test it: callscoot ask "What are the shop hours?"')
+        return 0
     cfg = load(args.config)
 
     if args.cmd == "gui":

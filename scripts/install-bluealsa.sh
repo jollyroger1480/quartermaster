@@ -37,6 +37,14 @@ if [ -f misc/systemd/bluealsa.service ]; then
 else
     cp misc/systemd/bluealsa.service.in /etc/systemd/system/bluealsa.service
 fi
+mkdir -p /etc/systemd/system/bluealsa.service.d
+# Call audio only. A2DP sink turns the PC into a Bluetooth speaker and the
+# phone plays notification sounds through it.
+cat > /etc/systemd/system/bluealsa.service.d/hfp-only.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/bluealsad -S -p hfp-hf --all-codecs
+EOF
 systemctl daemon-reload
 
 echo "=== [6/6] starting bluealsa ==="
@@ -46,6 +54,13 @@ systemctl --no-pager --lines=3 status bluealsa || true
 
 echo
 echo "=== done. switching wireplumber to the clean config ==="
+WP_SNIPPET="$(cd "$(dirname "$0")/.." && pwd)/systemd/wireplumber-no-a2dp.conf"
+if [ -n "$SUDO_USER" ] && [ -f "$WP_SNIPPET" ]; then
+    WP_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    mkdir -p "$WP_HOME/.config/wireplumber/wireplumber.conf.d"
+    cp "$WP_SNIPPET" "$WP_HOME/.config/wireplumber/wireplumber.conf.d/51-bluez-hfp-cvsd.conf"
+    chown "$SUDO_USER:$SUDO_USER" "$WP_HOME/.config/wireplumber/wireplumber.conf.d/51-bluez-hfp-cvsd.conf"
+fi
 if [ -n "$SUDO_USER" ]; then
     runuser -u "$SUDO_USER" -- systemctl --user restart wireplumber || true
     sleep 3

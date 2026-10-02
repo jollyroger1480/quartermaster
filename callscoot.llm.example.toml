@@ -1,0 +1,13 @@
+# Copy this to callscoot.llm.toml next to callscoot.toml, or run:
+#   callscoot llm-add --name mine --base-url https://api.example.com/v1 \
+#     --model my-model --api-key-env MY_LLM_KEY --api-key 'paste-key-here'
+#
+# Providers in callscoot.llm.toml are tried first. The first one that
+# answers is the one the phone uses. The key belongs in .env, not here.
+# callscoot.llm.toml and .env stay off git.
+
+[[providers]]
+name = "mine"
+base_url = "https://api.example.com/v1"
+model = "my-model"
+api_key_env = "MY_LLM_KEY"

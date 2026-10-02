@@ -1,5 +1,6 @@
 # Build artifacts / local state — never commit these
 callscoot.toml          # your real config (copy callscoot.example.toml instead)
+callscoot.llm.toml      # your own model (copy callscoot.llm.example.toml)
 .pin                    # your phone's PIN
 .sms_state              # sms poller checkpoint
 kokoro.off              # gaming-mode switch

@@ -4,7 +4,11 @@
 > and always takes a message for the Cap'n.*
 
 **Quartermaster** is a self-hosted AI receptionist for your shop's phone. It
-answers incoming **calls** over Bluetooth and holds a real conversation.
+was built and configured on **Linux**. It will not run on Windows as shipped.
+A Windows box would need a different Bluetooth call-audio path and a different
+way to start the watcher.
+
+It answers incoming **calls** over Bluetooth and holds a real conversation.
 It talks from your shop notes, looks up order status, takes a message, and it handles
 **SMS texts** the same way. Every exchange lands in your pocket via Telegram,
 with compressed audio and a transcript archived on disk.
@@ -143,6 +147,63 @@ $EDITOR .env                    # GROQ_API_KEY=...  ZAI_API_KEY=...  TELEGRAM_BO
 bin/callscoot doctor
 ```
 
+## Your own model
+
+Any server that speaks the OpenAI chat API can answer the phone. You do not
+edit Python, and you do not need anyone to wire a provider in for you.
+
+```bash
+bin/callscoot llm-add \
+  --name mine \
+  --base-url https://api.example.com/v1 \
+  --model my-model \
+  --api-key-env MY_LLM_KEY \
+  --api-key 'paste-key-here'
+```
+
+That writes `callscoot.llm.toml` next to `callscoot.toml`. Providers in that
+file are tried first. The first one that answers is the one the phone uses.
+The key is stored in `.env`. Both files stay off git.
+
+Hand edit works too. Copy `callscoot.llm.example.toml` to `callscoot.llm.toml`
+and change the four lines. Local Ollama needs no key:
+
+```bash
+bin/callscoot llm-add \
+  --name ollama \
+  --base-url http://127.0.0.1:11434/v1 \
+  --model llama3.1 \
+  --api-key-env ''
+```
+
+Check the model without placing a call:
+
+```bash
+bin/callscoot ask "What are the shop hours?"
+```
+
+The line above the answer names the provider that spoke.
+
+## Once it is configured
+
+```bash
+bin/callscoot doctor
+bin/callscoot watch
+```
+
+Leave `watch` running, or install the user systemd unit in `systemd/` so it
+comes back after a reboot. Then open the bench panel on that same computer:
+
+`http://127.0.0.1:8795`
+
+The secretary answers new rings. Turn secretary off when you want the phone
+to ring through. Fewer and More set how many rings to wait. Record does not
+make the bot talk. Turn AI on only joins a call you already picked up.
+Listen plays the call on this PC. Use headphones.
+
+`callscoot ask` is the same brain with no phone in the loop. Use it when you
+change the model or the shop notes and want to hear what it will say.
+
 ## Setup — Telegram
 
 Calls and texts still get answered, and the transcript still lands in
@@ -274,6 +335,12 @@ Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
 - **"Phone audio" missing on the phone's Bluetooth page** → the PC isn't
   advertising hands-free. Check `bluealsad` is running with `-p hfp-hf` and
   re-pair the phone.
+- **Phone notification sounds play on the PC speakers** → the PC accepted
+  A2DP, so the phone treated it as a Bluetooth speaker. Call audio is HFP
+  only. `scripts/install-bluealsa.sh` installs `systemd/bluealsa-hfp-only.conf`
+  and `systemd/wireplumber-no-a2dp.conf` so media audio is not offered.
+  Restart BlueALSA and WirePlumber after copying those files onto an older
+  install.
 - **Caller silent / no audio nodes** → an A2DP-vs-HFP profile fight. Force
   the headset role: `bluez5.headset-roles = [ hfp_hf ]` in WirePlumber config.
 - **Choppy voice** → disable mSBC (`bluez5.enable-msbc = false`), fall back
