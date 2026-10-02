@@ -34,6 +34,7 @@ class CallControls:
         self.call_number = "unknown"
         self.session_started = 0.0
         self.last_event = ""
+        self.link_status = ""
 
     # ── producers (Telegram poller, web GUI, CLI) ────────────────────────
     def post(self, command, payload=None):
@@ -103,4 +104,5 @@ class CallControls:
                 "number": self.call_number,
                 "started": self.session_started,
                 "last_event": self.last_event,
+                "link": self.link_status,
             }

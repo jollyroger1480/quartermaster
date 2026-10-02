@@ -1,0 +1,114 @@
+"""Panel actions: reconnect and status do not start the bot, listen only plays locally."""
+import os
+import tempfile
+import unittest
+from unittest import mock
+
+from callscoot import audio, errors
+from callscoot.controls import CallControls
+from callscoot.gui import _PAGE, handle_act, link_status, reconnect_link
+
+
+class PanelTests(unittest.TestCase):
+    def test_page_has_the_three_link_buttons(self):
+        self.assertIn("RECONNECT (no AI)", _PAGE)
+        self.assertIn("STATUS", _PAGE)
+        self.assertIn("LISTEN LIVE", _PAGE)
+
+    def test_record_does_not_arm_the_bot(self):
+        c = CallControls()
+        self.assertIn("AI off", c.toggle_record())
+        snap = c.snapshot()
+        self.assertTrue(snap["pending_record"])
+        self.assertFalse(snap["pending_join"])
+        self.assertFalse(snap["on_call"])
+
+    def test_reconnect_and_status_leave_ai_off(self):
+        c = CallControls()
+        cfg = {
+            "phone": {"adb_ip": "10.0.0.5", "adb_port": 39927},
+            "audio": {"bluealsa_pcm": "bluealsa:DEV=B0:C2:C7:C2:F5:9D,PROFILE=sco"},
+        }
+        with mock.patch("callscoot.gui.phone.adb", return_value=("device", "", 0)), \
+             mock.patch("callscoot.gui.phone.call_state", return_value={"state": 0, "number": None}), \
+             mock.patch("callscoot.gui.audio.bluealsa_ready", return_value=True), \
+             mock.patch("callscoot.gui.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="Connected: yes\nConnection successful\n", stderr="")
+            note = handle_act(cfg, c, "reconnect")
+            status = handle_act(cfg, c, "status")
+        self.assertIn("AI not started", note)
+        self.assertIn("ADB device", status)
+        self.assertIn("listen off", status)
+        self.assertFalse(c.pending_join)
+        self.assertFalse(c.pending_record)
+        run.assert_called()
+
+    def test_listen_toggle_does_not_arm_ai(self):
+        c = CallControls()
+        with mock.patch("callscoot.gui.audio.live.set", side_effect=["listening", "listen off"]) as setter:
+            on = handle_act({}, c, "listen")
+            off = handle_act({}, c, "listen")
+        self.assertEqual(on, "listening")
+        self.assertEqual(off, "listen off")
+        self.assertEqual(setter.call_args_list[0].args[1], True)
+        self.assertFalse(c.pending_join)
+
+    def test_actions_are_logged(self):
+        d = tempfile.mkdtemp()
+        errors._log = None
+        cfg = {"logs": {"dir": d}}
+        c = CallControls()
+        with mock.patch("callscoot.gui.audio.live.set", return_value="listen off"):
+            handle_act(cfg, c, "listen")
+        with open(os.path.join(d, "errors.log"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("panel listen: listen off", text)
+
+    def test_live_feed_writes_caller_audio_and_stops_on_a_broken_pipe(self):
+        player = audio.LiveListen()
+        proc = mock.Mock()
+        proc.stdin = mock.Mock()
+        player.on = True
+        player._proc = proc
+        player.feed(b"\x00\x00")
+        proc.stdin.write.assert_called_once_with(b"\x00\x00")
+        proc.stdin.write.side_effect = BrokenPipeError()
+        player.feed(b"\x00\x00")
+        self.assertFalse(player.on)
+        self.assertIsNone(player._proc)
+
+    def test_bot_wav_is_not_played_locally_when_listen_is_off(self):
+        player = audio.LiveListen()
+        with mock.patch("callscoot.audio.subprocess.run") as run, \
+             mock.patch("callscoot.audio.shutil.which", return_value="paplay"):
+            player.play_copy("/tmp/does-not-need-to-exist.wav")
+        run.assert_not_called()
+
+    def test_status_helper_reports_a_down_phone(self):
+        from callscoot.phone import PhoneError
+        c = CallControls()
+        with mock.patch("callscoot.gui.phone.adb", return_value=("", "no devices", 1)), \
+             mock.patch("callscoot.gui.phone.call_state", side_effect=PhoneError("down")), \
+             mock.patch("callscoot.gui.audio.bluealsa_ready", return_value=False), \
+             mock.patch("callscoot.gui._phone_mac", return_value=""):
+            text = link_status({}, c)
+        self.assertIn("ADB down", text)
+        self.assertIn("headset missing", text)
+        self.assertFalse(c.pending_join)
+
+    def test_reconnect_helper_does_not_answer(self):
+        c = CallControls()
+        cfg = {"phone": {"adb_ip": "10.0.0.5", "adb_port": 1},
+               "audio": {"bluealsa_pcm": "bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=sco"}}
+        with mock.patch("callscoot.gui.subprocess.run") as run, \
+             mock.patch("callscoot.gui.phone.adb", return_value=("connected", "", 0)), \
+             mock.patch("callscoot.gui.link_status", return_value="ADB device"):
+            run.return_value = mock.Mock(returncode=0, stdout="Connection successful\n", stderr="")
+            note = reconnect_link(cfg, c)
+        self.assertIn("AI not started", note)
+        self.assertFalse(c.pending_join)
+        self.assertEqual(c.drain(), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

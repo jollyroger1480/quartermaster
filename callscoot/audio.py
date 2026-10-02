@@ -19,6 +19,7 @@ import threading
 import time
 import wave
 
+from . import errors
 from .config import app_home, dig
 
 
@@ -159,6 +160,108 @@ def wait_for_hfp(cfg, timeout=15):
     )
 
 
+class LiveListen:
+    """Play the call on this PC. Caller PCM and bot wavs only — the mic stays out.
+
+    The SCO capture is already owned by record_utterance during a call, so
+    caller audio is fed in from there. Bot wavs are copied and played beside
+    the phone playback. Headphones avoid the phone hearing the room.
+    """
+
+    def __init__(self):
+        self.on = False
+        self.error = ""
+        self._proc = None
+        self._lock = threading.Lock()
+
+    def set(self, cfg, on):
+        with self._lock:
+            if on and not self.on:
+                self._open(cfg)
+                self.on = self._proc is not None
+            elif not on:
+                self._close()
+                self.on = False
+        if on and not self.on:
+            errors.info(f"listen failed: {self.error or 'no player'}")
+            return f"listen failed ({self.error or 'no player'})"
+        errors.info("listen on" if self.on else "listen off")
+        return "listening — headphones, mic stays off the call" if self.on else "listen off"
+
+    def _open(self, cfg):
+        rate = int(dig(cfg, "audio.sample_rate", 16000))
+        if not shutil.which("paplay"):
+            self.error = "paplay missing"
+            self._proc = None
+            return
+        self._proc = subprocess.Popen(
+            ["paplay", "--raw", "--format=s16le", f"--rate={rate}",
+             "--channels=1", "--latency-msec=60"],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        self.error = ""
+
+    def _close(self):
+        proc = self._proc
+        self._proc = None
+        if not proc:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+    def feed(self, raw):
+        """Caller audio from the SCO read loop. Drops the player if the pipe breaks."""
+        if not raw:
+            return
+        with self._lock:
+            proc = self._proc if self.on else None
+            if not proc or not proc.stdin:
+                return
+            try:
+                proc.stdin.write(raw)
+            except Exception:
+                self.error = "playback stopped"
+                self.on = False
+                self._close()
+
+    def play_copy(self, wav_path):
+        """Play one bot wav locally without blocking the phone playback."""
+        if not self.on or not wav_path or not os.path.isfile(wav_path):
+            return
+        if not shutil.which("paplay"):
+            return
+        fd, dest = tempfile.mkstemp(prefix="listen_", suffix=".wav")
+        os.close(fd)
+        try:
+            shutil.copyfile(wav_path, dest)
+        except OSError:
+            return
+
+        def _run():
+            try:
+                subprocess.run(["paplay", dest], timeout=30,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+            finally:
+                try:
+                    os.unlink(dest)
+                except OSError:
+                    pass
+
+        threading.Thread(target=_run, name="listen-bot", daemon=True).start()
+
+
+live = LiveListen()
+
+
 def _record_cmd(cfg, source, rate):
     if backend(cfg) == "bluealsa":
         return ["arecord", "-D", source, "-t", "raw", "-f", "S16_LE",
@@ -232,6 +335,10 @@ def record_utterance(cfg, source=None, session_sink=None):
                     session_sink(raw)
                 except Exception:
                     pass
+            try:
+                live.feed(raw)
+            except Exception:
+                pass
             elapsed = time.monotonic() - t0
             a = array.array("h")
             a.frombytes(raw)
@@ -322,6 +429,10 @@ def thinking_wav(cfg):
 
 
 def play_to_sink(cfg, wav_path, sink=None):
+    try:
+        live.play_copy(wav_path)
+    except Exception:
+        pass
     sink = sink or bt_sink(cfg)
     if not sink:
         raise AudioError("No Bluetooth sink node — HFP not active.")
