@@ -283,7 +283,7 @@ def main(argv=None):
 
     if args.cmd == "gui":
         import webbrowser
-        url = f"http://127.0.0.1:{dig(cfg, 'gui.port', 8790)}"
+        url = f"http://127.0.0.1:{dig(cfg, 'gui.port', 8795)}"
         print(f"opening {url} (the panel is served by `callscoot watch`)")
         webbrowser.open(url)
         return 0

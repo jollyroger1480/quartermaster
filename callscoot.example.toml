@@ -39,7 +39,7 @@ join_reply = "This is the shop assistant — I can help from here."
 # Local push-button panel for the live call: record / AI take over / hang up /
 # speak-to-caller. Served by `callscoot watch` on localhost only.
 enabled = true
-port = 8790
+port = 8795
 
 [alerts]
 telegram = true           # push a digest to Telegram after every message-taking call

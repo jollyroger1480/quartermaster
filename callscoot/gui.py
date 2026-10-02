@@ -1,6 +1,6 @@
 """Local web panel for the live call — buttons mirroring the Telegram controls.
 
-Served by the watch process on 127.0.0.1 only (gui.port, default 8790):
+Served by the watch process on 127.0.0.1 only (gui.port, default 8795):
   GET  /          the button page (auto-refreshing state)
   POST /act       one action: rec | ai | hangup | say  (form field `text` for say)
   GET  /state     JSON snapshot
@@ -62,7 +62,7 @@ st();setInterval(st,3000);
 def start_server(cfg, controls, log=print):
     if not dig(cfg, "gui.enabled", True):
         return None
-    port = int(dig(cfg, "gui.port", 8790))
+    port = int(dig(cfg, "gui.port", 8795))
 
     class _H(BaseHTTPRequestHandler):
         def _cors(self):
