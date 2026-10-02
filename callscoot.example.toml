@@ -21,7 +21,8 @@ allowlist = [
 answer_unknown = true
 
 [call]
-ring_delay_s = 3.0        # let it ring this long before answering
+ring_delay_s = 3.0        # seconds counted as one ring
+rings = 1                 # how many of those to wait; the panel can change this
 answer_delay_ms = 1200    # wait after answering before the greeting
 max_duration_s = 600      # hard cap per call
 max_turns = 30

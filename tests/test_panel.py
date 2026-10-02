@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from callscoot import audio, errors
-from callscoot.controls import CallControls, secretary_flag_path
+from callscoot.controls import CallControls, rings_path, secretary_flag_path
 from callscoot.gui import _PAGE, handle_act, link_status, read_form, reconnect_link
 
 
@@ -18,6 +18,9 @@ class PanelTests(unittest.TestCase):
         self.assertNotIn("FormData", _PAGE)
         self.assertIn("TURN SECRETARY OFF", _PAGE)
         self.assertIn("act('secretary')", _PAGE)
+        self.assertIn("act('rings_up')", _PAGE)
+        self.assertIn("act('rings_down')", _PAGE)
+        self.assertIn("FEWER", _PAGE)
         self.assertIn("does not shut it off", _PAGE)
 
     def test_browser_multipart_click_is_read(self):
@@ -138,6 +141,29 @@ class PanelTests(unittest.TestCase):
         self.assertTrue(c.snapshot()["secretary"])
         self.assertFalse(os.path.exists(path))
         self.assertEqual(c.drain(), [("rec_on", None)])
+
+    def test_ring_count_does_not_arm_the_bot_and_stays_in_range(self):
+        d = tempfile.mkdtemp()
+        c = CallControls()
+        c.ring_seconds = 3
+        cfg = {"logs": {"dir": d}}
+        path = rings_path(cfg)
+        up = handle_act(cfg, c, "rings_up")
+        self.assertIn("2 rings", up)
+        self.assertEqual(c.rings, 2)
+        self.assertTrue(os.path.exists(path))
+        self.assertFalse(c.pending_join)
+        self.assertFalse(c.pending_record)
+        for _ in range(20):
+            handle_act(cfg, c, "rings_up")
+        self.assertEqual(c.rings, 8)
+        for _ in range(20):
+            handle_act(cfg, c, "rings_down")
+        self.assertEqual(c.rings, 1)
+        self.assertIn("1 ring", handle_act(cfg, c, "rings_down"))
+        self.assertEqual(c.drain(), [])
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(fh.read().strip(), "1")
 
     def test_secretary_off_quiets_the_bot_without_hangup(self):
         c = CallControls()

@@ -176,6 +176,22 @@
     color: var(--accent);
     border-color: var(--accent);
   }
+  .ring-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+    align-items: center;
+  }
+  .ring-row button { margin: 0; }
+  .ring-count {
+    margin: 0;
+    min-width: 2ch;
+    text-align: center;
+    font-family: "Liberation Mono", ui-monospace, monospace;
+    font-size: 22px;
+    letter-spacing: .08em;
+    color: var(--accent);
+  }
   label {
     display: block;
     margin: 14px 4px 6px;
@@ -218,6 +234,12 @@
   <section class="desk">
     <h2>Secretary</h2>
     <button id="b-sec" class="on" onclick="act('secretary')">TURN SECRETARY OFF</button>
+    <h2>Rings before pickup</h2>
+    <div class="ring-row">
+      <button id="b-rings-down" onclick="act('rings_down')">FEWER</button>
+      <p id="rings" class="ring-count">1</p>
+      <button id="b-rings-up" onclick="act('rings_up')">MORE</button>
+    </div>
     <h2>On the call</h2>
     <button id="b-rec" onclick="act('rec')">RECORD (no AI)</button>
     <button id="b-ai" onclick="act('ai')">TURN AI ON</button>
@@ -229,7 +251,7 @@
     <button onclick="act('reconnect')">RECONNECT (no AI)</button>
     <button onclick="act('status')">STATUS</button>
     <button id="b-listen" onclick="act('listen')">LISTEN LIVE</button>
-    <p class="note">Turn AI on or off only joins or quiets the bot on a call you are already on. Turn secretary off stops new answers and keeps this page up. Reconnect does not start the bot. Listen plays the caller and the bot on this PC. Use headphones. Your mic stays off the call.</p>
+    <p class="note">Turn AI on or off only joins or quiets the bot on a call you are already on. Turn secretary off stops new answers and keeps this page up. Fewer and More set how many rings before pickup. Reconnect does not start the bot. Listen plays the caller and the bot on this PC. Use headphones. Your mic stays off the call.</p>
   </section>
 </div>
 <script>
@@ -251,6 +273,9 @@ async function st(){
     const bsec = document.getElementById('b-sec');
     bsec.textContent = up ? 'TURN SECRETARY OFF' : 'TURN SECRETARY ON';
     bsec.className = up ? 'on' : '';
+    const rings = j.rings || 1;
+    const per = j.ring_seconds || 3;
+    document.getElementById('rings').textContent = String(rings);
     const mode = document.getElementById('mode');
     mode.textContent = !up ? 'SECRETARY OFF' : (on ? (cop ? 'YOU HAVE THIS CALL' : 'BOT ON THIS CALL') : (join ? 'JOIN ARMED' : (pend ? 'RECORD ARMED' : 'SECRETARY ON')));
     let line;
@@ -268,9 +293,10 @@ async function st(){
       if (!on && join) line += '\nTurn AI on is armed. The bot will join a call you are already on and talk.';
       line += '\nSecretary stays on. It still answers new rings and talks. Turn AI on or off does not shut it off.';
     }
+    line += '\nPicks up after ' + rings + (rings === 1 ? ' ring' : ' rings') + ', about ' + Math.round(rings * per) + ' seconds.';
     if (j.listening) line += '\nListen is on. Caller and bot play here.';
     if (j.link) line += '\n' + j.link;
-    if (j.last_event && line.indexOf(j.last_event) < 0) line += '\n' + j.last_event;
+    if (j.last_event && line.toLowerCase().indexOf(String(j.last_event).toLowerCase()) < 0) line += '\n' + j.last_event;
     document.getElementById('st').textContent = line;
   } catch (e) {}
 }

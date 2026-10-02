@@ -23,12 +23,36 @@ HANGUP = "hangup"
 SAY_TO_CALLER = "say_to_caller"  # payload = text, spoken into the call verbatim
 
 
+RINGS_MIN = 1
+RINGS_MAX = 8
+
+
+def _logs_dir(cfg):
+    return os.path.expanduser(dig(cfg or {}, "logs.dir", "") or "")
+
+
 def secretary_flag_path(cfg):
     """Off-switch file under logs. Absent means the secretary is on."""
-    d = os.path.expanduser(dig(cfg or {}, "logs.dir", "") or "")
+    d = _logs_dir(cfg)
     if not d:
         return None
     return os.path.join(d, "secretary.off")
+
+
+def rings_path(cfg):
+    """Saved ring count. Absent means call.rings, or 1."""
+    d = _logs_dir(cfg)
+    if not d:
+        return None
+    return os.path.join(d, "rings")
+
+
+def clamp_rings(n):
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = RINGS_MIN
+    return max(RINGS_MIN, min(RINGS_MAX, n))
 
 
 class CallControls:
@@ -43,6 +67,8 @@ class CallControls:
         self.pending_record = False    # record the next offhook call, do not start the bot
         self.pending_join = False      # AI join requested while no session runs
         self.secretary = True          # watcher still answers new rings and the bot talks
+        self.rings = RINGS_MIN          # how many ring_delay_s waits before answer
+        self.ring_seconds = 3.0
         self.call_number = "unknown"
         self.session_started = 0.0
         self.last_event = ""
@@ -130,6 +156,35 @@ class CallControls:
         self.note_event(msg)
         return msg
 
+    def load_rings(self, path, default=RINGS_MIN):
+        n = clamp_rings(default)
+        if path and os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    n = clamp_rings(fh.read().strip())
+            except OSError:
+                n = clamp_rings(default)
+        with self._lock:
+            self.rings = n
+
+    def set_rings(self, n, path=None):
+        """How many configured ring-lengths to wait. Does not arm the bot."""
+        n = clamp_rings(n)
+        with self._lock:
+            self.rings = n
+            per = self.ring_seconds
+        if path:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(f"{n}\n")
+            except OSError:
+                pass
+        word = "ring" if n == 1 else "rings"
+        msg = f"picks up after {n} {word}, about {int(round(n * per))} seconds"
+        self.note_event(msg)
+        return msg
+
     # ── consumer (the session loop) ──────────────────────────────────────
     def drain(self):
         """All queued (command, payload) pairs right now."""
@@ -155,6 +210,8 @@ class CallControls:
                 "pending_record": self.pending_record,
                 "pending_join": self.pending_join,
                 "secretary": self.secretary,
+                "rings": self.rings,
+                "ring_seconds": self.ring_seconds,
                 "number": self.call_number,
                 "started": self.session_started,
                 "last_event": self.last_event,

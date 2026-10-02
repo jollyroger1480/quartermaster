@@ -9,7 +9,7 @@ import wave
 
 from . import agent, audio, errors, gui, notify, orders_index, phone, sms, stt, tts
 from .config import dig
-from .controls import CallControls, secretary_flag_path
+from .controls import CallControls, clamp_rings, rings_path, secretary_flag_path
 
 
 def _stamp():
@@ -41,10 +41,11 @@ def _warmup(cfg):
 def watch(cfg):
     errors.setup(cfg)
     answer_unknown = bool(dig(cfg, "phone.answer_unknown", True))
-    ring_delay = float(dig(cfg, "call.ring_delay_s", 3.0))
     refresh_s = float(dig(cfg, "orders.refresh_minutes", 15)) * 60
     controls = CallControls()
+    controls.ring_seconds = max(0.5, float(dig(cfg, "call.ring_delay_s", 3.0)))
     controls.load_secretary(secretary_flag_path(cfg))
+    controls.load_rings(rings_path(cfg), clamp_rings(dig(cfg, "call.rings", 1)))
     notify.start_control_listener(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     gui.start_server(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     try:
@@ -135,7 +136,25 @@ def watch(cfg):
                 time.sleep(1)
                 continue
             audio.set_hfp_profile(cfg)  # pre-arm the audio path while it rings
-            time.sleep(ring_delay)
+            per = max(0.5, float(controls.ring_seconds))
+            deadline = time.monotonic() + (controls.rings * per)
+            stopped = False
+            while time.monotonic() < deadline:
+                if not controls.secretary:
+                    print(f"[{_stamp()}] secretary turned off while ringing. Not answering.")
+                    errors.info("secretary turned off while ringing. Not answering.", cfg)
+                    prev = s
+                    stopped = True
+                    break
+                time.sleep(0.4)
+                st2 = phone.call_state()
+                if st2["state"] != 1:
+                    print("[callscoot]   caller hung up before answer")
+                    prev = st2["state"]
+                    stopped = True
+                    break
+            if stopped:
+                continue
             st2 = phone.call_state()
             if st2["state"] != 1:
                 print("[callscoot]   caller hung up before answer")

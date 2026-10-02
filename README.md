@@ -65,6 +65,7 @@ those rules are in the prompt *and* the guardrails.
 | Button | What it does |
 |---|---|
 | TURN SECRETARY OFF | Stops answering new rings. The page stays open. A call you are already on stays up. If the bot is talking, it goes quiet. |
+| FEWER / MORE | How many rings before pickup. One ring is `call.ring_delay_s` (3 seconds in the example). The count is 1 to 8 and sticks across a restart in `logs/rings`. |
 | TURN AI ON / OFF | Joins or quiets the bot on a call that is already up. It does not shut the secretary off. |
 | RECORD (no AI) | Records a call you already picked up. The bot does not start talking. |
 | RECONNECT (no AI) | Brings Bluetooth and wireless debugging back. It does not start the bot. |
