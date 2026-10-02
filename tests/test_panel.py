@@ -6,7 +6,7 @@ from unittest import mock
 
 from callscoot import audio, errors
 from callscoot.controls import CallControls
-from callscoot.gui import _PAGE, handle_act, link_status, reconnect_link
+from callscoot.gui import _PAGE, handle_act, link_status, read_form, reconnect_link
 
 
 class PanelTests(unittest.TestCase):
@@ -14,6 +14,25 @@ class PanelTests(unittest.TestCase):
         self.assertIn("RECONNECT (no AI)", _PAGE)
         self.assertIn("STATUS", _PAGE)
         self.assertIn("LISTEN LIVE", _PAGE)
+        self.assertIn("URLSearchParams", _PAGE)
+        self.assertNotIn("FormData", _PAGE)
+
+    def test_browser_multipart_click_is_read(self):
+        raw = (
+            b"--bound\r\n"
+            b'Content-Disposition: form-data; name="op"\r\n\r\n'
+            b"status\r\n"
+            b"--bound\r\n"
+            b'Content-Disposition: form-data; name="text"\r\n\r\n'
+            b"hello\r\n"
+            b"--bound--\r\n"
+        )
+        op, text = read_form("multipart/form-data; boundary=bound", raw)
+        self.assertEqual(op, "status")
+        self.assertEqual(text, "hello")
+        op2, text2 = read_form(
+            "application/x-www-form-urlencoded", b"op=listen&text=hi+there")
+        self.assertEqual((op2, text2), ("listen", "hi there"))
 
     def test_record_does_not_arm_the_bot(self):
         c = CallControls()

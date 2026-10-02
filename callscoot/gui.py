@@ -69,11 +69,44 @@ async function st(){try{const r=await fetch('/state');const j=await r.json();
  document.getElementById('st').textContent=line;
 }catch(e){}}
 async function act(k){const s=document.getElementById('say').value;
- const f=new FormData();f.append('op',k);if(s)f.append('text',s);
- if(k==='say'&&!s)return;await fetch('/act',{method:'POST',body:f});
- if(k==='say')document.getElementById('say').value='';st();setTimeout(st,800);}
+ if(k==='say'&&!s)return;
+ const body=new URLSearchParams(); body.set('op',k); if(s) body.set('text',s);
+ try{const r=await fetch('/act',{method:'POST',
+  headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+  const j=await r.json();
+  if(!j.ok) document.getElementById('st').textContent=j.note||'button did nothing';
+ }catch(e){document.getElementById('st').textContent='panel request failed';}
+ if(k==='say')document.getElementById('say').value='';
+ st();}
 st();setInterval(st,3000);
 </script></body></html>"""
+
+
+def read_form(content_type, raw):
+    """op and text from a button post. Browsers send multipart; curl sends urlencoded."""
+    ctype = content_type or ""
+    if "multipart/form-data" in ctype.lower():
+        m = re.search(r"boundary=([^;]+)", ctype, re.I)
+        if not m:
+            return "", ""
+        boundary = m.group(1).strip().strip('"').encode()
+        op = text = ""
+        for part in raw.split(b"--" + boundary):
+            if b"Content-Disposition" not in part:
+                continue
+            head, _, body = part.partition(b"\r\n\r\n")
+            name_m = re.search(rb'name="([^"]+)"', head)
+            if not name_m:
+                continue
+            val = body.split(b"\r\n", 1)[0].decode(errors="replace").strip()
+            name = name_m.group(1).decode()
+            if name == "op":
+                op = val
+            elif name == "text":
+                text = val
+        return op, text
+    form = parse_qs(raw.decode(errors="replace"))
+    return (form.get("op") or [""])[0], (form.get("text") or [""])[0].strip()
 
 
 def _phone_mac(cfg):
@@ -178,6 +211,7 @@ def start_server(cfg, controls, log=print):
             body = _PAGE.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -188,9 +222,8 @@ def start_server(cfg, controls, log=print):
                 self.end_headers()
                 return
             n = int(self.headers.get("Content-Length", 0) or 0)
-            form = parse_qs(self.rfile.read(n).decode())
-            op = (form.get("op") or [""])[0]
-            text = (form.get("text") or [""])[0].strip()
+            raw = self.rfile.read(n)
+            op, text = read_form(self.headers.get("Content-Type", ""), raw)
             note = handle_act(cfg, controls, op, text)
             body = json.dumps({"ok": bool(note), "note": note}).encode()
             self.send_response(200)
