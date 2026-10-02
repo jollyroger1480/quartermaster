@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quartermaster</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ink: #101412;
+    --plate: #1b221e;
+    --plate-2: #24302a;
+    --line: #3a4a40;
+    --text: #e7eee8;
+    --muted: #a3b2a8;
+    --accent: #8fb59a;
+    --accent-ink: #122018;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100dvh; }
+  body {
+    font-family: "Noto Sans", "Liberation Sans", sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 700px at 10% -10%, #24362c 0%, transparent 55%),
+      radial-gradient(900px 500px at 110% 80%, #1a2a24 0%, transparent 50%),
+      var(--ink);
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.35'/></svg>");
+    opacity: .05;
+  }
+  .wrap {
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: 1.1fr .9fr;
+    gap: 28px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 28px 36px;
+    align-items: center;
+  }
+  .face { position: relative; }
+  .sweep {
+    width: min(280px, 70vw);
+    height: min(280px, 70vw);
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(var(--line), var(--line)) center/1px 100% no-repeat,
+      linear-gradient(var(--line), var(--line)) center/100% 1px no-repeat,
+      repeating-conic-gradient(from 0deg, rgba(143,181,154,.55) 0 0.6deg, transparent 0.6deg 30deg),
+      repeating-radial-gradient(circle at 50% 50%, transparent 0 42px, rgba(143,181,154,.28) 43px 44px),
+      radial-gradient(circle at 50% 50%, #1a2820 0 18%, transparent 19%);
+    position: relative;
+    margin: 8px 0 22px;
+    box-shadow: inset 0 0 40px rgba(0,0,0,.45);
+  }
+  .sweep::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .sweep::after {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0 68%, rgba(143,181,154,.15) 78%, rgba(143,181,154,.85) 88%, transparent 100%);
+    animation: spin 9s linear infinite;
+    mask: radial-gradient(circle, transparent 18%, #000 20%);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .brand {
+    font-family: "Liberation Mono", ui-monospace, monospace;
+    letter-spacing: .14em;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  h1 {
+    font-size: clamp(40px, 6vw, 68px);
+    line-height: 1.05;
+    letter-spacing: -.03em;
+    margin: 0;
+    font-weight: 650;
+  }
+  #mode {
+    margin: 14px 0 8px;
+    font-family: "Liberation Mono", ui-monospace, monospace;
+    font-size: 13px;
+    letter-spacing: .16em;
+    color: var(--accent);
+  }
+  #mode::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: 1px;
+  }
+  #st {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.45;
+    white-space: pre-line;
+    max-width: 46ch;
+    min-height: 4.4em;
+    background: #0c100e;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: inset 0 8px 18px rgba(0,0,0,.28);
+  }
+  .desk {
+    background: var(--plate);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  h2 {
+    margin: 4px 4px 10px;
+    font-family: "Liberation Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  button, input {
+    font: inherit;
+    border-radius: var(--radius);
+  }
+  button {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    background: linear-gradient(#2a3830, var(--plate-2));
+    color: var(--text);
+    font-weight: 650;
+    letter-spacing: .06em;
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 1px 0 rgba(0,0,0,.4);
+    transition: transform .12s cubic-bezier(.16,1,.3,1), background .12s linear;
+  }
+  button:hover { background: #314239; }
+  button:active { transform: scale(.98); }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button.on {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .hang {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  label {
+    display: block;
+    margin: 14px 4px 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    background: #121816;
+    color: var(--text);
+  }
+  input::placeholder { color: #7d8c82; }
+  .note {
+    margin: 12px 4px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  @media (max-width: 800px) {
+    .wrap { grid-template-columns: 1fr; padding: 20px 16px 28px; align-items: start; }
+    .sweep { width: 160px; height: 160px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sweep::after { animation: none; opacity: .35; }
+    button { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="face">
+    <p class="brand">BUCCANEER SALVAGE</p>
+    <h1>Quartermaster</h1>
+    <p id="mode">IDLE</p>
+    <div class="sweep" aria-hidden="true"></div>
+    <div id="st">loading…</div>
+  </section>
+  <section class="desk">
+    <h2>On the call</h2>
+    <button id="b-rec" onclick="act('rec')">RECORD (no AI)</button>
+    <button id="b-ai" onclick="act('ai')">TURN AI ON</button>
+    <button class="hang" onclick="act('hangup')">HANG UP</button>
+    <label for="say">Say to the caller</label>
+    <input id="say" placeholder="Type a line, then speak" onkeydown="if(event.key==='Enter')act('say')">
+    <button onclick="act('say')">SPEAK</button>
+    <h2>Phone link</h2>
+    <button onclick="act('reconnect')">RECONNECT (no AI)</button>
+    <button onclick="act('status')">STATUS</button>
+    <button id="b-listen" onclick="act('listen')">LISTEN LIVE</button>
+    <p class="note">Reconnect brings the phone back and does not start the bot. Listen plays the caller and the bot on this PC. Use headphones. Your mic stays off the call.</p>
+  </section>
+</div>
+<script>
+async function st(){
+  try {
+    const r = await fetch('/state');
+    const j = await r.json();
+    const rec = j.recording, pend = j.pending_record, cop = j.copilot, on = j.on_call, join = j.pending_join;
+    const brec = document.getElementById('b-rec');
+    brec.textContent = (rec || pend) ? 'STOP RECORDING' : 'RECORD (no AI)';
+    brec.className = (rec || pend) ? 'on' : '';
+    const bai = document.getElementById('b-ai');
+    bai.className = ((on && !cop) || join) ? 'on' : '';
+    bai.textContent = on ? (cop ? 'TURN AI ON' : 'TURN AI OFF') : (join ? 'CANCEL AI' : 'TURN AI ON');
+    const ear = document.getElementById('b-listen');
+    ear.textContent = j.listening ? 'STOP LISTEN' : 'LISTEN LIVE';
+    ear.className = j.listening ? 'on' : '';
+    const mode = document.getElementById('mode');
+    mode.textContent = on ? (cop ? 'YOU HAVE THE CALL' : 'BOT IS TALKING') : (join ? 'AI ARMED' : (pend ? 'RECORD ARMED' : 'IDLE'));
+    let line = on
+      ? ('Live call ' + j.number + (cop ? '. You have it. AI is off.' : '. AI is talking.'))
+      : 'No active call.';
+    if (!on && pend) line += '\nRecord armed. The bot will not talk.';
+    if (!on && join) line += '\nAI armed. It will talk when the call is up.';
+    if (j.listening) line += '\nListen is on. Caller and bot play here.';
+    if (j.link) line += '\n' + j.link;
+    if (j.last_event && line.indexOf(j.last_event) < 0) line += '\n' + j.last_event;
+    document.getElementById('st').textContent = line;
+  } catch (e) {}
+}
+async function act(k){
+  const s = document.getElementById('say').value;
+  if (k === 'say' && !s) return;
+  const body = new URLSearchParams();
+  body.set('op', k);
+  if (s) body.set('text', s);
+  try {
+    const r = await fetch('/act', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body
+    });
+    const j = await r.json();
+    if (!j.ok) document.getElementById('st').textContent = j.note || 'button did nothing';
+  } catch (e) {
+    document.getElementById('st').textContent = 'panel request failed';
+  }
+  if (k === 'say') document.getElementById('say').value = '';
+  st();
+}
+st();
+setInterval(st, 3000);
+</script>
+</body>
+</html>

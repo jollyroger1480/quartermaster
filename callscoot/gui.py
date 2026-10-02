@@ -16,70 +16,14 @@ from urllib.parse import parse_qs
 from . import audio, errors, phone
 from .config import dig
 
-_PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<title>Quartermaster — call controls</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
- body{font-family:system-ui;background:#14181f;color:#e8eaed;display:grid;
-      place-items:center;min-height:96vh;margin:0}
- .panel{background:#1d232d;border-radius:14px;padding:28px 34px;min-width:340px}
- h1{font-size:18px;margin:0 0 4px}
- .st{font-size:13px;color:#9aa4b2;margin-bottom:18px;white-space:pre-line}
- button{display:block;width:100%;margin:8px 0;padding:14px;font-size:16px;
-        border:0;border-radius:10px;cursor:pointer;font-weight:600}
- .rec{background:#7f1d1d;color:#fff}.rec.on{background:#16a34a}
- .ai{background:#1d4ed8;color:#fff}.ai.on{background:#7c3aed}
- .end{background:#374151;color:#fff}
- .link{background:#0f3d3e;color:#fff}.link.on{background:#0f766e}
- h2{font-size:12px;letter-spacing:.04em;color:#6b7280;margin:18px 0 6px;font-weight:600}
- input{width:100%;box-sizing:border-box;padding:12px;font-size:15px;border-radius:10px;
-       border:1px solid #374151;background:#11151b;color:#e8eaed;margin:6px 0}
- .note{font-size:12px;color:#6b7280;margin-top:14px}
-</style></head><body><div class="panel">
-<h1>⚓ Quartermaster</h1><div class="st" id="st">loading…</div>
-<button class="rec" id="b-rec" onclick="act('rec')">⏺ RECORD (no AI)</button>
-<button class="ai" id="b-ai" onclick="act('ai')">🤖 TURN AI ON</button>
-<button class="end" onclick="act('hangup')">⏹ HANG UP</button>
-<input id="say" placeholder="say to caller…"
-       onkeydown="if(event.key==='Enter')act('say')">
-<button style="background:#374151" onclick="act('say')">🗣 Speak to caller</button>
-<h2>PHONE LINK</h2>
-<button class="link" onclick="act('reconnect')">↻ RECONNECT (no AI)</button>
-<button class="link" onclick="act('status')">☰ STATUS</button>
-<button class="link" id="b-listen" onclick="act('listen')">🎧 LISTEN LIVE</button>
-<div class="note">Reconnect brings Bluetooth and wireless debugging back. It does not start the bot. Listen plays the caller and the bot on this PC. Use headphones so the phone does not hear the room. Your mic stays off the call.</div>
-</div><script>
-async function st(){try{const r=await fetch('/state');const j=await r.json();
- const rec=j.recording, pend=j.pending_record, cop=j.copilot, on=j.on_call, join=j.pending_join;
- document.getElementById('b-rec').textContent=(rec||pend)?'⏹ STOP RECORDING':'⏺ RECORD (no AI)';
- document.getElementById('b-rec').className='rec'+((rec||pend)?' on':'');
- document.getElementById('b-ai').className='ai'+((on&&!cop)||join?' on':'');
- document.getElementById('b-ai').textContent=on?(cop?'🤖 TURN AI ON':'🤖 TURN AI OFF')
-   :(join?'🤖 CANCEL AI':'🤖 TURN AI ON');
- const ear=document.getElementById('b-listen');
- ear.textContent=j.listening?'🎧 STOP LISTEN':'🎧 LISTEN LIVE';
- ear.className='link'+(j.listening?' on':'');
- var line=on?('LIVE CALL — '+j.number+(cop?' (you have it, AI off)':' (AI is talking)'))
-   :'no active call';
- if(!on&&pend) line+='\\nRecord armed. The bot will not talk.';
- if(!on&&join) line+='\\nAI armed. It will talk when the call is up.';
- if(j.listening) line+='\\nListen on — caller and bot play here.';
- if(j.link) line+='\\n'+j.link;
- if(j.last_event && line.indexOf(j.last_event)<0) line+='\\n'+j.last_event;
- document.getElementById('st').textContent=line;
-}catch(e){}}
-async function act(k){const s=document.getElementById('say').value;
- if(k==='say'&&!s)return;
- const body=new URLSearchParams(); body.set('op',k); if(s) body.set('text',s);
- try{const r=await fetch('/act',{method:'POST',
-  headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-  const j=await r.json();
-  if(!j.ok) document.getElementById('st').textContent=j.note||'button did nothing';
- }catch(e){document.getElementById('st').textContent='panel request failed';}
- if(k==='say')document.getElementById('say').value='';
- st();}
-st();setInterval(st,3000);
-</script></body></html>"""
+import os
+
+def _load_page():
+    path = os.path.join(os.path.dirname(__file__), "panel.html")
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+_PAGE = _load_page()
 
 
 def read_form(content_type, raw):
