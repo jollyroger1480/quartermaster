@@ -36,8 +36,10 @@ join_reply = "This is the shop assistant — I can help from here."
                           # (Telegram 🤖 button, /ai, or the web panel)
 
 [gui]
-# Local push-button panel for the live call: record / AI take over / hang up /
-# speak-to-caller. Served by `callscoot watch` on localhost only.
+# Local panel. callscoot watch serves it on 127.0.0.1 only (not the LAN).
+# TURN SECRETARY OFF stops new answers and leaves the page up.
+# TURN AI ON / OFF only joins or quiets a call already up.
+# Record, reconnect, status, and listen do not start the bot.
 enabled = true
 port = 8795
 

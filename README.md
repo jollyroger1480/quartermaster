@@ -4,13 +4,19 @@
 > and always takes a message for the Cap'n.*
 
 **Quartermaster** is a self-hosted AI receptionist for your shop's phone. It
-answers incoming **calls** over Bluetooth and holds a real conversation —
-quotes your services, looks up order status, takes messages — and it handles
+answers incoming **calls** over Bluetooth and holds a real conversation.
+It talks from your shop notes, looks up order status, takes a message, and it handles
 **SMS texts** the same way. Every exchange lands in your pocket via Telegram,
 with compressed audio and a transcript archived on disk.
 
 Built on a real salvage shop's phone line, where it now answers while the
 Cap'n is elbow-deep in an engine bay.
+
+Shop: [Buccaneer Salvage](https://buccaneersalvage.github.io/), Carbondale, PA.
+Hours are by appointment.
+[YouTube @BuccaneerSalvage](https://www.youtube.com/@BuccaneerSalvage?sub_confirmation=1)
+· [X @jollyroger1480](https://x.com/jollyroger1480)
+· [Cash App $jollyroger1480](https://cash.app/$jollyroger1480)
 
 ```
         Caller
@@ -48,6 +54,25 @@ GPU rig.
 and order data. No internet search. Saved contacts never get bot replies.
 The bot cannot book times, promise refunds, or state your home address —
 those rules are in the prompt *and* the guardrails.
+
+## Bench panel
+
+`callscoot watch` serves this page on the same computer only:
+[http://127.0.0.1:8795](http://127.0.0.1:8795). It does not listen on the LAN.
+
+![Quartermaster bench panel. Secretary is on, no call is up, listen is off.](docs/quartermaster-panel.png)
+
+| Button | What it does |
+|---|---|
+| TURN SECRETARY OFF | Stops answering new rings. The page stays open. A call you are already on stays up. If the bot is talking, it goes quiet. |
+| TURN AI ON / OFF | Joins or quiets the bot on a call that is already up. It does not shut the secretary off. |
+| RECORD (no AI) | Records a call you already picked up. The bot does not start talking. |
+| RECONNECT (no AI) | Brings Bluetooth and wireless debugging back. It does not start the bot. |
+| STATUS | Phone link, call state, headset, and whether listen is on. |
+| LISTEN LIVE | Plays the caller and the bot on this PC. Use headphones. Your mic stays off the call. |
+| HANG UP / SPEAK | Ends the call, or says the line you typed. |
+
+Turning the secretary off writes `logs/secretary.off`. That file is gitignored, and the choice sticks across a restart. Press the button again and new rings are answered.
 
 ---
 
@@ -291,14 +316,18 @@ customer's name, the street, and the file path on the shop computer.
 
 ---
 
-## Tip jar 🏴‍☠️
+## Tip jar and the shop
 
-If this here code hauled ye out of a phone-call nightmare and ye feel like
-tossing a coin in the bucket:
+Buccaneer Salvage, Carbondale, PA. Hours are by appointment. The phone bot is
+the day job. The channel is the rest of it.
 
-**Cash App: [`$jollyroger1480`](https://cash.app/$jollyroger1480)**
+Subscribe on YouTube for the music videos and the shorts. Follow on X for the
+same captain, shorter posts. Cash App if this code saved you a Saturday.
 
-Fair winds, and may your customers all read the FAQ.
+- YouTube: [@BuccaneerSalvage](https://www.youtube.com/@BuccaneerSalvage?sub_confirmation=1)
+- X: [@jollyroger1480](https://x.com/jollyroger1480)
+- Shop site: [buccaneersalvage.github.io](https://buccaneersalvage.github.io/)
+- Cash App: [`$jollyroger1480`](https://cash.app/$jollyroger1480)
 
 ## License
 
