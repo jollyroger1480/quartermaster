@@ -32,8 +32,8 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .note{font-size:12px;color:#6b7280;margin-top:14px}
 </style></head><body><div class="panel">
 <h1>⚓ Quartermaster</h1><div class="st" id="st">loading…</div>
-<button class="rec" id="b-rec" onclick="act('rec')">⏺ RECORD CALL</button>
-<button class="ai" id="b-ai" onclick="act('ai')">🤖 AI TAKE OVER</button>
+<button class="rec" id="b-rec" onclick="act('rec')">⏺ RECORD (no AI)</button>
+<button class="ai" id="b-ai" onclick="act('ai')">🤖 TURN AI ON</button>
 <button class="end" onclick="act('hangup')">⏹ HANG UP</button>
 <input id="say" placeholder="say to caller…"
        onkeydown="if(event.key==='Enter')act('say')">
@@ -41,15 +41,17 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <div class="note">localhost only — this panel controls the live phone call.</div>
 </div><script>
 async function st(){try{const r=await fetch('/state');const j=await r.json();
- const rec=j.recording, cop=j.copilot, on=j.on_call;
- document.getElementById('b-rec').textContent=rec?'⏹ STOP RECORDING':'⏺ RECORD CALL';
- document.getElementById('b-rec').className='rec'+(rec?' on':'');
- document.getElementById('b-ai').className='ai'+(cop&&!on?' on':'');
- document.getElementById('b-ai').textContent=on?(cop?'🤖 AI TAKE OVER':'🤖 AI STEP BACK')
-   :'🤖 AI JOIN CALL';
- document.getElementById('st').textContent=
-  (on?('LIVE CALL — '+j.number+(cop?' (copilot: you have the call)':' (bot has the call)'))
-     :'no active call')+(j.last_event?('\\n'+j.last_event):'');
+ const rec=j.recording, pend=j.pending_record, cop=j.copilot, on=j.on_call, join=j.pending_join;
+ document.getElementById('b-rec').textContent=(rec||pend)?'⏹ STOP RECORDING':'⏺ RECORD (no AI)';
+ document.getElementById('b-rec').className='rec'+((rec||pend)?' on':'');
+ document.getElementById('b-ai').className='ai'+((on&&!cop)||join?' on':'');
+ document.getElementById('b-ai').textContent=on?(cop?'🤖 TURN AI ON':'🤖 TURN AI OFF')
+   :(join?'🤖 CANCEL AI':'🤖 TURN AI ON');
+ var line=on?('LIVE CALL — '+j.number+(cop?' (you have it, AI off)':' (AI is talking)'))
+   :'no active call';
+ if(!on&&pend) line+='\\nRecord armed. The bot will not talk.';
+ if(!on&&join) line+='\\nAI armed. It will talk when the call is up.';
+ document.getElementById('st').textContent=line+(j.last_event?('\\n'+j.last_event):'');
 }catch(e){}} 
 async function act(k){const s=document.getElementById('say').value;
  const f=new FormData();f.append('op',k);if(s)f.append('text',s);

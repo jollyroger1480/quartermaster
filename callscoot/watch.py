@@ -83,15 +83,19 @@ def watch(cfg):
             except Exception as e:
                 print(f"[{_stamp()}] [ index error: {e}")
                 errors.record("orders-index", e, cfg)
-        # AI jump-in: the Cap'n already has a live call and asked for the bot
-        if s == 2 and not controls.on_call and controls.pending_join:
+        # Manual panel: record stays silent; AI is the only path that talks.
+        if s == 2 and not controls.on_call and (
+            controls.pending_join or controls.pending_record
+        ):
+            speak = controls.pending_join
             controls.pending_join = False
-            print(f"[{_stamp()}] AI jump-in requested for live call {num or 'unknown'}")
+            controls.pending_record = False
+            print(f"[{_stamp()}] {'AI' if speak else 'record-only'} join for live call {num or 'unknown'}")
             notify.send_live_call_card(cfg, num or "unknown",
                                        log=lambda m: print(f"[{_stamp()}] {m}"))
             try:
                 agent.run_session(cfg, number=num or "unknown", controls=controls,
-                                  join_live=True)
+                                  join_live=True, speak=speak)
             except Exception as e:
                 print(f"[{_stamp()}] [ join-session error: {e}")
                 errors.record("join-session", e, cfg)

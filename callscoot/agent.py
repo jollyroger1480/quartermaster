@@ -138,14 +138,19 @@ def _archive(wav_path, dest_no_ext):
     return dest
 
 
-def run_session(cfg, number="unknown", log=print, controls=None, join_live=False):
+def run_session(cfg, number="unknown", log=print, controls=None, join_live=False,
+                speak=None):
     """Answer (if ringing) and handle the whole call. Returns (transcript, flagged).
 
     controls: shared CallControls bus — enables Telegram/GUI/CLI control of the
     live session (record, copilot toggle, say-to-caller, hangup).
-    join_live: skip answering; a human already has the call offhook and asked
-    the bot to jump in.
+    join_live: skip answering; a human already has the call offhook.
+    speak: when False the bot stays silent (record / transcribe only).
+    Default is to talk on a call this watcher answered, and to stay silent
+    when joining a call a person already took unless they asked for the AI.
     """
+    if speak is None:
+        speak = not join_live
     max_dur = dig(cfg, "call.max_duration_s", 600)
     max_turns = dig(cfg, "call.max_turns", 30)
     greeting = dig(cfg, "call.greeting", "Thanks for calling. How can I help you?")
@@ -171,14 +176,18 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
     history = []
     flagged = False
     audio_n = [0]
-    copilot = bool(join_live)   # joined live = silent transcriber until told to speak
+    copilot = not speak         # silent until the Cap'n turns the AI on
     recorder = audio.SessionRecorder(cfg, t0)
     hangup_now = [False]
 
     if controls is not None:
         controls._set(on_call=True, copilot=copilot, call_number=number,
                       session_started=time.time())
-        controls.note_event("bot joined live call" if join_live else "call answered")
+        controls.note_event(
+            "bot joined and is talking" if speak and join_live
+            else "call answered" if speak
+            else "recording — AI is off"
+        )
 
     def say(text, force=False):
         wav = tts.synth(cfg, text)
@@ -235,14 +244,19 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
         return not hangup_now[0]
 
     try:
-        if join_live:
+        if not drain_controls():
+            raise AgentError("hangup requested before the bot spoke")
+        if speak and join_live:
             say(dig(cfg, "call.join_reply",
                     "This is the shop assistant — I can help from here."), force=True)
             transcript.append(("agent", "bot joined the call"))
-        else:
+        elif speak:
             say(greeting)
             transcript.append(("agent", greeting))
             log(f"agent: {greeting}")
+        else:
+            log("silent session — recording / transcribe only, AI not speaking")
+            transcript.append(("note", "AI off — silent record"))
         empty = 0
         turns = 0
         while time.monotonic() - t0 < max_dur and (copilot or turns < max_turns):

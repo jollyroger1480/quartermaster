@@ -29,6 +29,7 @@ class CallControls:
         self.on_call = False           # a session (autonomous or copilot) is running
         self.copilot = False           # bot silent, transcribe-only
         self.recording = False
+        self.pending_record = False    # record the next offhook call, do not start the bot
         self.pending_join = False      # AI join requested while no session runs
         self.call_number = "unknown"
         self.session_started = 0.0
@@ -43,19 +44,35 @@ class CallControls:
             self.last_event = text
 
     def toggle_record(self):
+        """Arm or stop recording. Off-call this does not start the bot."""
         with self._lock:
             recording = self.recording
-        if not self.on_call and not recording:
-            self.note_event("recording arms at the next call")
-        self.post(REC_OFF if recording else REC_ON)
-        return "recording stopped" if recording else "recording started"
+            pending = self.pending_record
+        if self.on_call:
+            self.post(REC_OFF if recording else REC_ON)
+            return "recording stopped" if recording else "recording started"
+        if pending:
+            self.pending_record = False
+            self.post(REC_OFF)
+            self.note_event("recording cancelled")
+            return "recording cancelled"
+        self.pending_record = True
+        self.post(REC_ON)
+        self.note_event("record armed — AI stays off")
+        return "record armed, AI off"
 
     def toggle_ai(self):
+        """Start or stop the bot talking. Separate from recording."""
         with self._lock:
             on_call, copilot = self.on_call, self.copilot
         if not on_call:
+            if self.pending_join:
+                self.pending_join = False
+                self.note_event("AI cancelled")
+                return "AI cancelled"
             self.pending_join = True
-            return "bot will join the live call"
+            self.note_event("AI will take the live call and talk")
+            return "AI will join and talk"
         self.post(AI_TAKEOVER if copilot else AI_DROP)
         return "bot took over the call" if copilot else "bot stepped back (copilot)"
 
@@ -81,6 +98,8 @@ class CallControls:
                 "on_call": self.on_call,
                 "copilot": self.copilot,
                 "recording": self.recording,
+                "pending_record": self.pending_record,
+                "pending_join": self.pending_join,
                 "number": self.call_number,
                 "started": self.session_started,
                 "last_event": self.last_event,

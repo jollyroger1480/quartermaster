@@ -161,8 +161,9 @@ def start_control_listener(cfg, controls, log=print):
         while True:
             try:
                 res = _api(_token(), "getUpdates",
-                           {"offset": offset, "timeout": 50, "allowed_updates":
-                            json.dumps(["message", "callback_query", "edited_message"])})
+                           {"offset": offset, "timeout": 25, "allowed_updates":
+                            json.dumps(["message", "callback_query", "edited_message"])},
+                           timeout=40)
                 for upd in res.get("result", []):
                     offset = upd["update_id"] + 1
                     try:
