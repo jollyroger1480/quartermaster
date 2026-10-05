@@ -6,9 +6,10 @@
 # ═══════════════════════════════════════════════════════════════
 
 [phone]
-# Wireless debugging target. Leave adb_ip empty to auto-discover via
-# `adb mdns services`. NOTE: the wireless-debugging port changes when the
-# phone reboots or the toggle is re-enabled — re-read it from the phone.
+# Last known wireless-debugging target. Leave adb_ip empty to discover via
+# mDNS only. A saved address is tried first; if Wi-Fi moved the phone,
+# callscoot finds `_adb-tls-connect` and connects. Pairing is still required
+# after wireless debugging is turned off and on.
 adb_ip = "192.168.1.50"
 adb_port = 5555
 answer_keycodes = ["KEYCODE_HEADSETHOOK", "KEYCODE_CALL"]

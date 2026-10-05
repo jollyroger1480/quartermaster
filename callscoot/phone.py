@@ -16,19 +16,62 @@ def adb(args, timeout=15):
     return p.stdout.strip(), p.stderr.strip(), p.returncode
 
 
-def ensure_connected(cfg):
+def _is_device():
     out, _, rc = adb(["get-state"])
-    if rc == 0 and out.strip() == "device":
+    return rc == 0 and out.strip() == "device"
+
+
+def mdns_targets():
+    """Current wireless-debugging endpoints. The port and IP move when Wi-Fi does."""
+    found = []
+
+    def add(target):
+        target = (target or "").strip().strip(";")
+        if target and target not in found:
+            found.append(target)
+
+    out, _, _ = adb(["mdns", "services"], timeout=8)
+    for line in out.splitlines():
+        if "_adb-tls-connect" in line or "_adb-tcp-connect" in line:
+            add(line.rsplit(None, 1)[-1])
+    if found:
+        return found
+    try:
+        p = subprocess.run(
+            ["avahi-browse", "-rpt", "_adb-tls-connect._tcp"],
+            capture_output=True, text=True, timeout=4,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return found
+    for line in (p.stdout or "").splitlines():
+        if not line.startswith("="):
+            continue
+        fields = line.split(";")
+        # =;iface;proto;name;type;domain;hostname;address;port;txt
+        if len(fields) < 9 or not fields[8].strip().isdigit():
+            continue
+        add(f"{fields[7].strip('[]')}:{fields[8].strip()}")
+    return found
+
+
+def ensure_connected(cfg):
+    if _is_device():
         return
+    targets = []
     ip = dig(cfg, "phone.adb_ip", "")
     port = dig(cfg, "phone.adb_port", 5555)
     if ip:
-        adb(["connect", f"{ip}:{port}"], timeout=12)
-        out, _, rc = adb(["get-state"])
-        if rc == 0 and out.strip() == "device":
+        targets.append(f"{ip}:{port}")
+    for target in mdns_targets():
+        if target not in targets:
+            targets.append(target)
+    for target in targets:
+        adb(["connect", target], timeout=12)
+        if _is_device():
             return
     raise PhoneError(
-        "No ADB device. Run `callscoot adb-connect` (or pair wireless debugging — see README)."
+        "No ADB device. Wireless debugging must be on and paired. "
+        "Run `callscoot adb-connect` after the phone shows a new pairing code."
     )
 
 

@@ -173,21 +173,10 @@ def cmd_adb_connect(cfg, target=None):
         out, err, rc = phone.adb(["connect", target], timeout=12)
         print(out or err)
         return rc
-    ip = dig(cfg, "phone.adb_ip", "")
-    port = dig(cfg, "phone.adb_port", 5555)
-    if ip:
-        out, err, rc = phone.adb(["connect", f"{ip}:{port}"], timeout=12)
-        print(out or err)
-    else:
-        print("phone.adb_ip not set in callscoot.toml — trying mDNS discovery…")
-    out, _, _ = phone.adb(["mdns", "services"], timeout=10)
-    for line in out.splitlines():
-        if "_adb-tls-connect" in line or "_adb-tcp-connect" in line:
-            addr = line.rsplit(None, 1)[-1].strip(";")
-            print(f"discovered {addr}; connecting…")
-            out2, err2, _ = phone.adb(["connect", addr], timeout=12)
-            print(out2 or err2)
-            break
+    try:
+        phone.ensure_connected(cfg)
+    except phone.PhoneError as e:
+        print(e)
     out, _, rc = phone.adb(["get-state"])
     print(f"state: {out or 'not connected'}")
     return rc

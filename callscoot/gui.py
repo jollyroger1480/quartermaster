@@ -128,13 +128,11 @@ def reconnect_link(cfg, controls):
         parts.append("Bluetooth " + (line[-1] if line else ("ok" if p.returncode == 0 else "failed")))
     else:
         parts.append("Bluetooth mac missing")
-    ip = dig(cfg, "phone.adb_ip", "")
-    port = dig(cfg, "phone.adb_port", 0)
-    if ip and port:
-        out, err, _ = phone.adb(["connect", f"{ip}:{port}"], timeout=12)
-        parts.append((out or err or "adb connect").strip().splitlines()[-1])
-    else:
-        parts.append("adb target missing")
+    try:
+        phone.ensure_connected(cfg)
+        parts.append("ADB device")
+    except phone.PhoneError as e:
+        parts.append("ADB " + str(e).splitlines()[0])
     controls.link_status = link_status(cfg, controls)
     return "reconnected, AI not started — " + " | ".join(parts)
 
