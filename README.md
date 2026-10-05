@@ -403,4 +403,6 @@ same captain, shorter posts. Cash App if this code saved you a Saturday.
 [Cap'n Jules the Rustjack](https://github.com/jollyroger1480) of
 [Buccaneer Salvage](https://buccaneersalvage.github.io/).
 
+Call-flow ideas — waiting out a half sentence, the after-call slip, and sharper note search — came from [Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/).
+
 Full provider and component credits: [CREDITS.md](CREDITS.md).

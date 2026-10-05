@@ -63,13 +63,14 @@ CALL_KEYBOARD = {
 
 
 def send_call_alert(cfg, number, transcript, flagged, transcript_path, log=print,
-                    reply_markup=None):
+                    reply_markup=None, summary=""):
     if not dig(cfg, "alerts.telegram", True):
         return
     if not transcript_path:
         transcript_path = "(none)"
     caller_lines = [t for w, t in transcript if w == "caller"]
-    gist = " | ".join(caller_lines)[:600] or "(no speech captured)"
+    gist = (summary or "").strip() or (
+        " | ".join(caller_lines)[:600] or "(no speech captured)")
     owner = dig(cfg, "persona.owner", "the owner")
     text = (
         f"☎️ CALL{' ⚠️ ESCALATION' if flagged else ''} — {number}\n"

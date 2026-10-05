@@ -38,6 +38,10 @@ Your keys, your environment, your choice. The bot ships provider-agnostic.
 
 - **Telegram Bot API** — call/text digests pushed to the owner's phone
 
+## Contributors
+
+- **[Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/)** — Evan Ewalt, Watertown, SD. The half-sentence listen, the six-line after-call slip, the doubled-reply cleanup, and the sharper note search came from his Shop Assistant.
+
 ## Special thanks
 
 - Every salvager who ever missed a call while elbow-deep in an engine bay.

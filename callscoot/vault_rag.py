@@ -15,6 +15,7 @@ i'm you're it's that's on the and but for with""".split())
 
 NUM_RE = re.compile(r"\b\d{4,}\b")
 TERM_RE = re.compile(r"[a-z0-9#]{2,}")
+HEADING_RE = re.compile(r"^#{1,6}\s")
 
 
 def _terms(s):
@@ -42,7 +43,7 @@ def _vault_files(cfg):
     return files
 
 
-def _chunks(text, max_chars):
+def _para_chunks(text, max_chars):
     out, cur = [], ""
     for para in re.split(r"\n\s*\n", text):
         para = para.strip()
@@ -62,9 +63,37 @@ def _chunks(text, max_chars):
     return out
 
 
+def _chunks(text, max_chars):
+    """Each chunk keeps its markdown heading so the heading words score with the body."""
+    out, heading, buf = [], "", []
+
+    def flush():
+        body = "\n".join(buf).strip()
+        if not body:
+            return
+        for chunk in _para_chunks(body, max_chars):
+            out.append(f"{heading}\n{chunk}" if heading else chunk)
+
+    for ln in text.splitlines():
+        if HEADING_RE.match(ln):
+            flush()
+            heading, buf = ln.strip(), []
+        else:
+            buf.append(ln)
+    flush()
+    return out
+
+
+def _stem(term):
+    for suf in ("ing", "es", "ed", "s"):
+        if len(term) - len(suf) >= 4 and term.endswith(suf):
+            return term[: -len(suf)]
+    return term
+
+
 def _score(chunk, q_terms, q_numbers):
     low = chunk.lower()
-    score = sum(2 for t in q_terms if t in low)
+    score = sum(2 for t in q_terms if _stem(t) in low)
     score += sum(1 for t in q_terms for w in low.split() if t == w)  # exact word bonus
     for n in q_numbers:
         if n in chunk:
@@ -72,11 +101,15 @@ def _score(chunk, q_terms, q_numbers):
     return score
 
 
-def retrieve(cfg, query, k=None):
+def retrieve(cfg, query, k=None, focus=None):
+    """focus is the caller's latest sentence. It weighs 3x so a follow-up
+    finds its own section instead of sticking on the previous topic."""
     k = k or dig(cfg, "vault.top_k", 6)
     q_terms = _terms(query)
-    q_numbers = NUM_RE.findall(query)
-    if not q_terms and not q_numbers:
+    q_numbers = NUM_RE.findall(query or "")
+    f_terms = _terms(focus) if focus else []
+    f_numbers = NUM_RE.findall(focus) if focus else []
+    if not q_terms and not q_numbers and not f_terms and not f_numbers:
         return []
     hits = []
     max_chars = dig(cfg, "vault.chunk_chars", 700)
@@ -84,7 +117,11 @@ def retrieve(cfg, query, k=None):
         # live operational digests outrank static notes on ties
         fresh = 6 if os.sep + "knowledge" + os.sep in path else 0
         for chunk in _chunks(text_of(path), max_chars):
+            if "[FILL IN" in chunk:
+                continue
             s = _score(chunk, q_terms, q_numbers)
+            if f_terms or f_numbers:
+                s += 3 * _score(chunk, f_terms, f_numbers)
             if s <= 0:
                 continue
             hits.append((s + fresh, path, chunk))
@@ -133,12 +170,12 @@ def redact(text):
     return EMAIL_RE.sub("[email]", text)
 
 
-def build_context(cfg, query):
+def build_context(cfg, query, focus=None):
     parts = []
     g = graphify_query(cfg, query)
     if g:
         parts.append("[knowledge graph]\n" + redact(g))
-    hits = retrieve(cfg, query)
+    hits = retrieve(cfg, query, focus=focus)
     if hits:
         root = os.path.expanduser(dig(cfg, "vault.root", ""))
         blocks = []

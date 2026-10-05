@@ -285,8 +285,12 @@ def _read_chunk(stream, n, timeout):
     return os.read(stream.fileno(), n)
 
 
-def record_utterance(cfg, source=None, session_sink=None):
+def record_utterance(cfg, source=None, session_sink=None, max_wait=None):
     """Record until the caller stops talking. Returns {'path','seconds'} or None.
+
+    max_wait: if set, give up once this many seconds pass with no speech.
+    The follow-up listen after a half sentence uses it so a finished caller
+    is not stuck waiting out the full utterance window.
 
     session_sink: optional callable(raw_bytes) — every real (split) PCM chunk is
     also handed to it while the VAD loop runs, feeding the session-wide
@@ -320,6 +324,9 @@ def record_utterance(cfg, source=None, session_sink=None):
     limit = max_s + 2
     try:
         while time.monotonic() - t0 < limit:
+            if (max_wait is not None and speech_start is None
+                    and time.monotonic() - t0 >= max_wait):
+                break
             remain = limit - (time.monotonic() - t0)
             got = _read_chunk(proc.stdout, chunk_bytes, min(0.25, remain))
             if got is None:

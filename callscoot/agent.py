@@ -5,6 +5,7 @@ The session also drains the shared controls bus every turn: Telegram buttons /
 web GUI / CLI can arm the three-party recorder, toggle copilot mode (bot silent,
 transcribe-only), speak arbitrary text to the caller, or hang up."""
 import datetime
+import difflib
 import os
 import re
 import shutil
@@ -74,7 +75,11 @@ def system_prompt(cfg, context, escalate=False):
 HARD RULES:
 - Answer ONLY from the SHOP FACTS and CONTEXT sections. You have no other knowledge and no internet. If something is not written there, NEVER state it, confirm it, deny it, or estimate it — say you will check with {owner} and follow up.
 - Order questions: ask the caller for their name or buyer username, match it against the orders in CONTEXT. If CONTEXT shows the order in the unshipped list, it has not shipped; if absent from that list, it has shipped. Give only what CONTEXT shows — never invent dates or tracking numbers.
-- Spoken style: 1-3 short sentences. No markdown, no lists, no emojis, no URLs.
+- Spoken style: 1-3 short sentences. No markdown, no lists, no emojis, no URLs. If SHOP FACTS or CONTEXT states a price, say it in words.
+- Ask one question at a time. If they skip it or push back, drop it. Never ask the same question twice.
+- Before goodbye on a message, read that message back in one short sentence.
+- Caller ID already has their number. Never ask them to read it out.
+- Do not ask them to read a VIN, serial, order number, or email aloud. Ask them to text it.
 - Language: default to English. If the caller speaks Spanish, reply in simple, friendly Spanish.
 - If the caller mentions damage, wrong item, not received, chargeback, dispute, fraud, or legal action: stay calm and brief, say {owner} will follow up personally. NEVER promise refunds, returns, replacements, or cancellations.
 - PRIVACY: never share or confirm {owner}'s personal information — home address, personal phone or email, schedule, whereabouts, family, or legal matters. Business address and shop hours come only from CONTEXT; if not in CONTEXT, take a message.
@@ -103,14 +108,94 @@ def _session_dir(cfg, number, stamp):
     return path
 
 
-def _save_transcript(session_dir, transcript, flagged):
+def _transcribe_saved(cfg, rec, session_dir, stem):
+    """Transcribe one utterance and keep the opus archive. Empty if nobody spoke."""
+    if not rec:
+        return ""
+    path = rec["path"]
+    try:
+        return (stt.transcribe(cfg, path) or "").strip()
+    finally:
+        _archive(path, os.path.join(session_dir, stem))
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _save_transcript(session_dir, transcript, flagged, summary=""):
     path = os.path.join(session_dir, "transcript.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"# call {os.path.basename(session_dir)}\n\n"
                 f"escalation: {'YES' if flagged else 'no'}\n\n")
+        if summary:
+            f.write(f"## summary\n\n{summary.strip()}\n\n## transcript\n\n")
         for who, text in transcript:
             f.write(f"**{who}:** {text}\n\n")
     return path
+
+
+TRAILING_FILLER = {
+    "and", "uh", "um", "the", "a", "an", "my", "it's", "its", "is", "for", "to",
+    "of", "with", "so", "but", "or", "on", "in", "i", "it", "that", "like",
+    "need", "want", "got",
+}
+
+
+def looks_unfinished(text):
+    """A short fragment, a trailing number, or a filler word means they are
+    still talking. Adapted from Ewalt's Auto Tuning Shop Assistant."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    words = re.findall(r"[\w'.-]+", t)
+    last = re.sub(r"[^\w']", "", words[-1].lower()) if words else ""
+    return (len(words) <= 3 or bool(re.search(r"\d[\s.,-]*$", t))
+            or last in TRAILING_FILLER or t.endswith((",", "-", "—", "...")))
+
+
+def tidy_reply(text):
+    """Split glued sentences, drop near-duplicates, keep only the last question.
+    Adapted from Ewalt's Auto Tuning Shop Assistant."""
+    t = re.sub(r"([.!?])(?=[A-Z])", r"\1 ", (text or "").strip())
+    sents = [x.strip() for x in re.split(r"(?<=[.!?])\s+", t) if x.strip()]
+    kept = []
+    for sent in sents:
+        if any(difflib.SequenceMatcher(None, sent.lower(), prev.lower()).ratio() > 0.72
+               for prev in kept):
+            continue
+        kept.append(sent)
+    questions = [i for i, sent in enumerate(kept) if sent.endswith("?")]
+    if len(questions) > 1:
+        last = questions[-1]
+        kept = [sent for i, sent in enumerate(kept) if not sent.endswith("?") or i == last]
+    return " ".join(kept)
+
+
+SUMMARY_PROMPT = """Summarize this phone call for the business owner in at most 6 short lines:
+Caller: <name if given, else unknown> - <caller ID number>
+About: <the item, vehicle, job or order they called about, or unknown>
+Wants: <what they need>
+Message: <the caller's message in their words, or "none">
+Reply by: <call / text to caller ID / email address they gave / not said>
+Action: <what the owner should do next>
+Only use facts from the transcript. No preamble."""
+
+
+def summarize(cfg, number, transcript):
+    """Owner slip. Adapted from Ewalt's Auto Tuning Shop Assistant."""
+    lines = [f"{who}: {text}" for who, text in transcript if who in ("caller", "agent")]
+    if not any(who == "caller" for who, _text in transcript):
+        return "(caller said nothing intelligible)"
+    try:
+        text, _provider = llm.chat(cfg, [
+            {"role": "system", "content": SUMMARY_PROMPT},
+            {"role": "user", "content": f"Caller ID: {number}\n\n" + "\n".join(lines)},
+        ])
+        return (text or "").strip() or " | ".join(
+            t for who, t in transcript if who == "caller")[:600]
+    except Exception:
+        return " | ".join(t for who, t in transcript if who == "caller")[:600]
 
 
 def _archive(wav_path, dest_no_ext):
@@ -265,27 +350,34 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
             if phone.call_state().get("state") != 2:
                 log("caller hung up")
                 break
-            rec = audio.record_utterance(cfg, session_sink=recorder.add_caller
-                                         if recorder.armed else None)
-            utt_path = rec["path"] if rec else None
-            try:
-                if utt_path is None:
-                    if copilot:
-                        # Cap'n has the call: silence is his business, stay quiet
-                        continue
-                    empty += 1
-                    if empty == 1:
-                        say("Are you still there?")
-                        transcript.append(("note", "no speech — nudged once"))
-                        continue
-                    say(voicemail)
-                    transcript.append(("agent", voicemail))
+            sink = recorder.add_caller if recorder.armed else None
+            rec = audio.record_utterance(cfg, session_sink=sink)
+            if rec is None:
+                if copilot:
+                    # Cap'n has the call: silence is his business, stay quiet
+                    continue
+                empty += 1
+                if empty == 1:
+                    say("Are you still there?")
+                    transcript.append(("note", "no speech — nudged once"))
+                    continue
+                say(voicemail)
+                transcript.append(("agent", voicemail))
+                break
+            caller_text = _transcribe_saved(
+                cfg, rec, session_dir, f"caller_{turns:02d}")
+            piece = 1
+            while (caller_text and looks_unfinished(caller_text) and piece < 3
+                   and not SPAM_RE.search(caller_text)
+                   and not (END_RE.search(caller_text) and len(caller_text.split()) <= 6)):
+                more_rec = audio.record_utterance(cfg, session_sink=sink, max_wait=3.0)
+                more = _transcribe_saved(
+                    cfg, more_rec, session_dir, f"caller_{turns:02d}_{piece}")
+                piece += 1
+                if not more:
                     break
-                caller_text = stt.transcribe(cfg, utt_path)
-            finally:
-                if utt_path:
-                    _archive(utt_path, os.path.join(session_dir, f"caller_{turns:02d}"))
-                    os.unlink(utt_path)
+                caller_text = f"{caller_text} {more}".strip()
+                log(f"  (caller still going — {more!r})")
             if not caller_text:
                 if copilot:
                     continue
@@ -345,11 +437,15 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
                 provider = "guardrail"
                 transcript.append(("note", "arrangement requested — message taken, nothing scheduled"))
             else:
-                context, _sources = vault_rag.build_context(cfg, caller_text)
+                recent = " ".join(
+                    m["content"] for m in history[-4:] if m["role"] == "user")
+                context, _sources = vault_rag.build_context(
+                    cfg, f"{recent} {caller_text}".strip(), focus=caller_text)
                 messages = ([{"role": "system", "content": system_prompt(cfg, context, escalate)}]
                             + history[-12:] + [{"role": "user", "content": caller_text}])
                 try:
                     reply, provider = llm.chat(cfg, messages)
+                    reply = tidy_reply(reply)
                 except llm.LLMError as e:
                     log(f"llm error: {e}")
                     reply = "I'm sorry, our system hiccuped for a second. Please call right back."
@@ -385,14 +481,16 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
         if controls is not None:
             controls._set(on_call=False, copilot=False, recording=False)
             controls.note_event("call ended")
-        path = _save_transcript(session_dir, transcript, flagged)
+        summary = summarize(cfg, number, transcript)
+        path = _save_transcript(session_dir, transcript, flagged, summary)
         log(f"transcript: {path}")
         spam = any(w == "note" and "SPAM" in t for w, t in transcript)
         if spam and not dig(cfg, "spam.alert_on_spam", False):
             log("spam call — Telegram alert skipped")
         else:
             from . import notify
-            notify.send_call_alert(cfg, number, transcript, flagged, path, log=log)
+            notify.send_call_alert(cfg, number, transcript, flagged, path,
+                                   log=log, summary=summary)
         if flagged:
             log("ESCALATION — this call needs Julian. See transcript.")
     return transcript, flagged
