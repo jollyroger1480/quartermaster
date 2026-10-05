@@ -40,7 +40,7 @@ Your keys, your environment, your choice. The bot ships provider-agnostic.
 
 ## Contributors
 
-- **[Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/)** — Evan Ewalt, Watertown, SD. The half-sentence listen, the six-line after-call slip, the doubled-reply cleanup, and the sharper note search came from his Shop Assistant.
+- **[Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/)** — Evan Ewalt, Watertown, SD. The half-sentence listen, the six-line after-call slip, the doubled-reply cleanup, and the sharper note search came from his Shop Assistant. The optional Google Voice app in `optional/google-voice/` is his Shop Assistant, MIT, for people who want Voice instead of Bluetooth.
 
 ## Special thanks
 

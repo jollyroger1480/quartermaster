@@ -13,3 +13,5 @@ __pycache__/
 vendor/
 *.ogg
 *.wav
+optional/google-voice/runtime/
+optional/google-voice/data/

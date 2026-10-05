@@ -32,6 +32,10 @@ Hours are by appointment.
         Telegram               ← "☎️ CALL — (number): what they said"
 ```
 
+Bluetooth is the path this repo runs. If you want a Google Voice number
+instead of a paired phone, that is a separate optional app. See
+[Optional: Google Voice](#optional-google-voice-instead-of-bluetooth).
+
 ---
 
 ## What it does
@@ -58,6 +62,26 @@ GPU rig.
 and order data. No internet search. Saved contacts never get bot replies.
 The bot cannot book times, promise refunds, or state your home address —
 those rules are in the prompt *and* the guardrails.
+
+## Optional: Google Voice instead of Bluetooth
+
+The default receptionist needs an Android phone on Bluetooth, with wireless
+debugging for answer and hangup. That is the shop line this was built on.
+
+If you do not have that phone, [Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/)
+Shop Assistant answers a **Google Voice** number from a Chrome window. It
+ships in [`optional/google-voice/`](optional/google-voice/) under his MIT
+license. It is a second app. It does not replace `callscoot watch`, and it
+does not read `callscoot.toml`.
+
+```bash
+cd optional/google-voice
+./install.sh
+```
+
+Setup, the Voice sign-in, and the limits (Google can change the page and
+break it) are in
+[optional/google-voice/README.md](optional/google-voice/README.md).
 
 ## Bench panel
 
