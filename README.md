@@ -16,6 +16,8 @@ with compressed audio and a transcript archived on disk.
 Built on a real salvage shop's phone line, where it now answers while the
 Cap'n is elbow-deep in an engine bay.
 
+![Pirate quartermaster at the shop counter, ledger open under an oil lamp.](docs/quartermaster-pirate.jpg)
+
 Shop: [Buccaneer Salvage](https://buccaneersalvage.github.io/), Carbondale, PA.
 Hours are by appointment.
 [YouTube @BuccaneerSalvage](https://www.youtube.com/@BuccaneerSalvage?sub_confirmation=1)
