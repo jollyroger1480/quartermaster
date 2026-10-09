@@ -4,6 +4,7 @@ import re
 import subprocess
 import time
 
+from . import hfp
 from .config import app_home, dig
 
 
@@ -54,7 +55,18 @@ def mdns_targets():
     return found
 
 
+def adb_up():
+    return _is_device()
+
+
 def ensure_connected(cfg):
+    """Calls need the headset link. ADB is only required for texts."""
+    headset = False
+    try:
+        hfp.ping()
+        headset = True
+    except Exception:
+        headset = False
     if _is_device():
         return
     targets = []
@@ -69,14 +81,28 @@ def ensure_connected(cfg):
         adb(["connect", target], timeout=12)
         if _is_device():
             return
+    if headset:
+        return
     raise PhoneError(
-        "No ADB device. Wireless debugging must be on and paired. "
-        "Run `callscoot adb-connect` after the phone shows a new pairing code."
+        "Headset call control is down, and wireless debugging is not paired. "
+        "Reconnect the phone in Bluetooth. Texts also need: callscoot adb-connect."
     )
 
 
 def call_state():
-    """0=idle 1=ringing(incoming) 2=offhook."""
+    """0=idle 1=ringing(incoming) 2=offhook. Headset first, ADB if that link is down."""
+    hfp_err = None
+    try:
+        return hfp.call_state()
+    except Exception as e:
+        hfp_err = e
+    try:
+        return _adb_call_state()
+    except PhoneError as e:
+        raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_call_state():
     out, err, rc = adb(["shell", "dumpsys", "telephony.registry"])
     if rc != 0:
         raise PhoneError(f"dumpsys failed: {err or out}")
@@ -91,13 +117,24 @@ def call_state():
 
 
 def answer(cfg=None):
+    try:
+        hfp.answer()
+        return "ATA"
+    except Exception as hfp_err:
+        try:
+            return _adb_answer(cfg)
+        except PhoneError as e:
+            raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_answer(cfg=None):
     codes = dig(cfg, "phone.answer_keycodes", None) or [
         "KEYCODE_HEADSETHOOK", "KEYCODE_CALL",
     ]
     for code in codes:
         adb(["shell", "input", "keyevent", code])
         time.sleep(0.8)
-        if call_state()["state"] == 2:
+        if _adb_call_state()["state"] == 2:
             return code
     raise PhoneError(
         "Could not answer while locked (OEM-dependent). Keep screen on while plugged in, "
@@ -106,10 +143,21 @@ def answer(cfg=None):
 
 
 def hangup():
+    try:
+        hfp.hangup()
+        return
+    except Exception as hfp_err:
+        try:
+            _adb_hangup()
+        except PhoneError as e:
+            raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_hangup():
     for _ in range(3):
         adb(["shell", "input", "keyevent", "KEYCODE_ENDCALL"])
         time.sleep(0.7)
-        if call_state()["state"] != 2:
+        if _adb_call_state()["state"] != 2:
             return
     raise PhoneError("call still offhook after KEYCODE_ENDCALL x3")
 

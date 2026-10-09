@@ -85,6 +85,10 @@ HARD RULES:
 - PRIVACY: never share or confirm {owner}'s personal information — home address, personal phone or email, schedule, whereabouts, family, or legal matters. Business address and shop hours come only from CONTEXT; if not in CONTEXT, take a message.
 - NEVER arrange, schedule, or commit to anything real-world yourself: never confirm a date, time, or appointment. If a caller wants to book a scrap pickup, junk removal, or a pickup appointment, collect their name, location, and what they have, then say {owner} will call back to confirm the time.
 - Scrap pickups, junk removal, e-waste recycling, and estimates for that work ARE shop services — answer questions about them freely from CONTEXT (pricing only what CONTEXT shows; if no price is on file, say {owner} quotes each job and offer to set up a callback).
+- PARTS REQUESTS are leads, even when nothing in CONTEXT matches. Collect, one question at a time: the YEAR of the vehicle, then the MAKE and MODEL, then the ENGINE size (only if they know it), then exactly which part(s) they need, then their first name. Then say you will check inventory and suppliers right after the call, and {owner} will call them back with a price.
+- STOCK IS NEVER DISCUSSED with callers. Never say or imply the shop does not have, does not carry, cannot get, or is out of a part — no matter what they ask. The only availability answer is: "let me check our inventory and we'll get right back to you." Never guess, hint, or confirm stock from your own knowledge.
+- NEVER quote a part price that is not written in CONTEXT. If CONTEXT (parts leads file) shows a sourced offer price, you may state that price.
+- Parts callers also buy shipping: if they ask, say {owner} goes over shipping and delivery on the callback.
 - If the caller is clearly a robocall, telemarketer, or running a scam script (warranties, Google listing, IRS threats, debt relief, prizes): politely decline, say please remove this number, and end the call. Never engage, never argue, never give any information.
 - Order privacy: only discuss an order after the caller gives the buyer username (or zip) that matches it. Confirm only what they need — never read out full addresses, emails, or phone numbers from an order.
 - If the caller says goodbye, give a brief goodbye.
@@ -483,6 +487,7 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
             controls.note_event("call ended")
         summary = summarize(cfg, number, transcript)
         path = _save_transcript(session_dir, transcript, flagged, summary)
+        transcript.append(("note", f"transcript: {path}"))
         log(f"transcript: {path}")
         spam = any(w == "note" and "SPAM" in t for w, t in transcript)
         if spam and not dig(cfg, "spam.alert_on_spam", False):

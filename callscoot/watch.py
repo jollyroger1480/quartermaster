@@ -46,12 +46,17 @@ def watch(cfg):
     controls.ring_seconds = max(0.5, float(dig(cfg, "call.ring_delay_s", 3.0)))
     controls.load_secretary(secretary_flag_path(cfg))
     controls.load_rings(rings_path(cfg), clamp_rings(dig(cfg, "call.rings", 1)))
-    notify.start_control_listener(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
+    if dig(cfg, "alerts.telegram_control", False):
+        # opt-in: callscoot must NOT long-poll a bot the Quartermaster
+        # secretary is already polling — one getUpdates poller per bot, or 409s
+        notify.start_control_listener(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
+    else:
+        print(f"[{_stamp()}] telegram control listener off (shared with secretary)")
     gui.start_server(cfg, controls, log=lambda m: print(f"[{_stamp()}] {m}"))
     try:
         phone.ensure_connected(cfg)
     except phone.PhoneError as e:
-        print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
+        print(f"[{_stamp()}] [ phone link down ({e}); reconnecting…")
         errors.record("adb", e, cfg)
     who = "everyone" if answer_unknown else "allowlist only"
     sec = "on" if controls.secretary else "off"
@@ -65,7 +70,7 @@ def watch(cfg):
         try:
             st = phone.call_state()
         except phone.PhoneError as e:
-            print(f"[{_stamp()}] [ ADB lost ({e}); reconnecting…")
+            print(f"[{_stamp()}] [ phone link down ({e}); reconnecting…")
             errors.record("adb", e, cfg)
             try:
                 phone.ensure_connected(cfg)
@@ -99,8 +104,9 @@ def watch(cfg):
             print(f"[{_stamp()}] {'AI' if speak else 'record-only'} join for live call {num or 'unknown'}")
             notify.send_live_call_card(cfg, num or "unknown",
                                        log=lambda m: print(f"[{_stamp()}] {m}"))
+            transcript = None
             try:
-                agent.run_session(cfg, number=num or "unknown", controls=controls,
+                transcript, _flagged = agent.run_session(cfg, number=num or "unknown", controls=controls,
                                   join_live=True, speak=speak)
             except Exception as e:
                 print(f"[{_stamp()}] [ join-session error: {e}")
@@ -120,10 +126,23 @@ def watch(cfg):
             errors.info(f"RINGING {label}", cfg)
             blacklist = {phone.last10(b) for b in (dig(cfg, "spam.blacklist", []) or []) if b}
             if not num:
-                # caller ID often lands a poll or two after the ring
-                prev = s
-                time.sleep(1)
-                continue
+                # caller ID often lands a poll or two after the ring; cap the wait
+                # so a phone that never sends it still gets handled as an unknown caller
+                id_deadline = time.monotonic() + 6.0
+                stopped = False
+                while time.monotonic() < id_deadline:
+                    time.sleep(1)
+                    st_now = phone.call_state()
+                    if st_now["state"] != 1:
+                        print("[callscoot]   caller hung up before answer")
+                        prev = st_now["state"]
+                        stopped = True
+                        break
+                    if st_now["number"]:
+                        num = st_now["number"]
+                        break
+                if stopped:
+                    continue
             if phone.last10(num) in blacklist:
                 print(f"[{_stamp()}] blacklisted — not answering")
                 prev = s
@@ -162,8 +181,10 @@ def watch(cfg):
                 continue
             notify.send_live_call_card(cfg, num or "unknown",
                                        log=lambda m: print(f"[{_stamp()}] {m}"))
+            transcript = None
             try:
-                agent.run_session(cfg, number=num or "unknown", controls=controls)
+                transcript, _flagged = agent.run_session(cfg, number=num or "unknown",
+                                                         controls=controls)
             except Exception as e:
                 print(f"[{_stamp()}] [ session error: {e}")
                 errors.record("call-session", e, cfg)
@@ -177,7 +198,8 @@ def watch(cfg):
             continue
         prev = s
         sms_tick = (int(time.monotonic() * 1000) // max(1, int(dig(cfg, "sms.poll_seconds", 5) * 1000)))
-        if dig(cfg, "sms.enabled", True) and sms_tick != getattr(sms_poll, "tick", None) and s == 0:
+        if (dig(cfg, "sms.enabled", True) and sms_tick != getattr(sms_poll, "tick", None)
+                and s == 0 and phone.adb_up()):
             sms_poll.tick = sms_tick
             try:
                 sms.poll(cfg, log=lambda m: (print(f"[{_stamp()}] {m}"), errors.info(m, cfg)))

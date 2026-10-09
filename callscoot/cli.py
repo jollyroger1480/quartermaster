@@ -56,7 +56,20 @@ def cmd_doctor(cfg):
         out, _, rc = phone.adb(["get-state"])
         if rc == 0 and out.strip() == "device":
             return True, "device attached"
-        return False, "no device — run: callscoot adb-connect"
+        try:
+            from . import hfp
+            hfp.call_state()
+        except Exception:
+            return False, "no device — run: callscoot adb-connect"
+        return True, "not attached — calls use the headset; texts need wireless debugging"
+
+    def c_hfp_control():
+        from . import hfp
+        try:
+            st = hfp.call_state()
+        except Exception as e:
+            return False, f"headset cannot answer yet: {e}"
+        return True, f"answer/hangup over Bluetooth (state {st['state']})"
 
     def c_bt_adapter():
         out = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True).stdout
@@ -139,6 +152,7 @@ def cmd_doctor(cfg):
     check("bluetooth adapter", c_bt_adapter)
     check("paired devices", c_bt_devices)
     check("HFP audio path", c_hfp)
+    check("HFP call control", c_hfp_control)
 
     fails = 0
     for ok, label, detail in results:
@@ -258,7 +272,7 @@ def cmd_ask(cfg, question):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="callscoot",
-                                 description="Bluetooth HFP phone receptionist (voice via BT, control via wireless ADB)")
+                                 description="Bluetooth HFP phone receptionist (voice + call control over Bluetooth; wireless ADB only for texts)")
     ap.add_argument("--config", help="path to callscoot.toml")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor", help="validate every stage, print next steps")

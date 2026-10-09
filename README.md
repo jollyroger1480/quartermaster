@@ -48,6 +48,14 @@ from live data, takes messages with callback details, hangs up on "bye",
 declines scam scripts mid-sentence, and never promises refunds, dates, or
 your home address.
 
+**Parts calls** — a caller hunting for a part gets taken properly: the
+receptionist collects the year, make/model, engine, and exactly which
+part(s), then promises a callback with a price. **Stock is never
+discussed** — the bot never says the shop does or doesn't have a part; the
+only availability answer is "let me check our inventory and we'll get
+right back to you." Prices are quoted only from your price file, never
+invented.
+
 **Texts** — reads every incoming SMS over ADB, replies with the same brain,
 loop-protected and contact-aware (saved contacts = personal, never
 bot-replied).
@@ -67,8 +75,10 @@ those rules are in the prompt *and* the guardrails.
 
 ## Optional: Google Voice instead of Bluetooth
 
-The default receptionist needs an Android phone on Bluetooth, with wireless
-debugging for answer and hangup. That is the shop line this was built on.
+The default receptionist needs an Android phone on Bluetooth. Answer, hang
+up, and caller ID ride the headset link itself — **no wireless debugging
+needed for calls**; that is only for texts. That is the shop line this was
+built on.
 
 If you do not have that phone, [Ewalt's Auto Tuning](https://www.ewaltsautotuning.com/)
 Shop Assistant answers a **Google Voice** number from a Chrome window. It
@@ -98,7 +108,7 @@ break it) are in
 | FEWER / MORE | How many rings before pickup. One ring is `call.ring_delay_s` (3 seconds in the example). The count is 1 to 8 and sticks across a restart in `logs/rings`. |
 | TURN AI ON / OFF | Joins or quiets the bot on a call that is already up. It does not shut the secretary off. |
 | RECORD (no AI) | Records a call you already picked up. The bot does not start talking. |
-| RECONNECT (no AI) | Brings Bluetooth and wireless debugging back. It does not start the bot. |
+| RECONNECT (no AI) | Brings the Bluetooth phone link (and wireless debugging, if you use texts) back. It does not start the bot. |
 | STATUS | Phone link, call state, headset, and whether listen is on. |
 | LISTEN LIVE | Plays the caller and the bot on this PC. Use headphones. Your mic stays off the call. |
 | HANG UP / SPEAK | Ends the call, or says the line you typed. |
@@ -114,7 +124,7 @@ Turning the secretary off writes `logs/secretary.off`. That file is gitignored, 
 | Linux PC + Bluetooth adapter | tested on Mint 22 / PipeWire 1.x, 16 threads |
 | Android 11+ phone | spare/bench phone, SIM active, on the same Wi-Fi |
 | Phone + PC paired over Bluetooth | the PC acts as the phone's **headset** |
-| Wireless debugging | Developer options → pair once |
+| Wireless debugging (optional) | only if you want texts: Developer options → pair once |
 | mic + speakers or headset | on the PC (this is the phone's "headset") |
 | API keys (optional) | any OpenAI-compatible LLM endpoint; Groq free tier works |
 | Telegram | a bot you create, plus one chat, group, or forum topic for alerts |
@@ -130,8 +140,9 @@ Turning the secretary off writes `logs/secretary.off`. That file is gitignored, 
 
 1. **Pair the phone and PC over Bluetooth** (Settings → Bluetooth → tap the
    PC). Allow **call audio** when prompted.
-2. **Developer options**: tap Build number ×7 in About phone. Then enable
-   **Wireless debugging** and pair from the PC:
+2. **Wireless debugging — optional, texts only.** Calls work without it. If
+   you want the bot to read and send texts, tap Build number ×7 in About
+   phone, enable **Wireless debugging**, and pair from the PC:
    ```bash
    adb pair PHONE_IP:PAIR_PORT     # 6-digit code from the phone
    callscoot adb-connect
@@ -329,7 +340,7 @@ journalctl --user -u callscoot-watch -f
 |---|---|
 | `callscoot doctor` | checks every layer, prints the exact next fix |
 | `callscoot status` | call state + Bluetooth audio nodes |
-| `callscoot adb-connect` | (re)connect wireless ADB |
+| `callscoot adb-connect` | (re)connect wireless ADB — texts only |
 | `callscoot listen` | capture one utterance from the phone, print the transcription |
 | `callscoot ask "question"` | ask the brain a question without a phone call |
 | `callscoot index` | refresh the order snapshots |

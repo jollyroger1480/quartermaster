@@ -54,6 +54,12 @@ telegram_chat = ""
 # telegram_chat = "123456789"              # DM with your bot
 # telegram_chat = "-1001234567890"         # a group
 # telegram_chat = "-1001234567890:3"       # one forum topic inside that group
+# Inbound Telegram controls (record / AI / hang-up buttons) long-poll your
+# bot's getUpdates — and Telegram allows exactly ONE poller per bot. If
+# anything else already polls this bot (an AI secretary, for example), leave
+# this false or the two will knock each other over with 409 conflicts.
+# Outbound alerts above are send-only and always safe to share.
+telegram_control = false
 
 [audio]
 # bluealsa = bluez-alsa daemon owns HFP (recommended, see scripts/install-bluealsa.sh)
