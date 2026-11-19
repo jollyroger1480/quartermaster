@@ -63,6 +63,14 @@ def _save_state(state):
         json.dump(state, f)
 
 
+def _state_mtime():
+    """When the state was last saved (for a state written before checked_at)."""
+    try:
+        return os.path.getmtime(STATE_FILE)
+    except OSError:
+        return 0
+
+
 _META_ROW = re.compile(r"^Row: (\d+) _id=(\d+), address=(.*), date=(\d+)\s*$", re.M)
 
 
@@ -106,6 +114,8 @@ def _parse_inbox(meta_out, body_out):
 
 
 WINDOW = 86400 * 7  # how far back a conversation counts, and how old a text may be
+POLL_BUDGET = 4.0     # seconds one poll may spend on texts before the watch loop runs again
+HISTORY_SLACK = 3600  # phone clock vs PC clock margin for "dated before the last check"
 
 
 def _norm(text):
@@ -419,20 +429,38 @@ def poll(cfg, log=print):
     if not dig(cfg, "sms.enabled", True):
         return
     state = _load_state()
+    read_at = time.time()
     msgs = _inbox()
     if not msgs:
         return
     last_id = int(state.get("last_id", 0))
     if "last_id" not in state:  # first run: start from now, don't replay history
         state["last_id"] = int(msgs[-1]["_id"])
+        state["checked_at"] = read_at
         _save_state(state)
         return
     fresh = [m for m in msgs if int(m["_id"]) > last_id]
     if not fresh:
         return
     now = time.time()
+    # Message ids belong to one phone's SMS database. After a phone swap or a
+    # restored backup the stored last_id points into old history, and every old
+    # text looks new. A text dated well before the last inbox read
+    # cannot be a new arrival, so it is history: skip it in one step, quietly.
+    seen_at = float(state.get("checked_at") or _state_mtime() or 0)
+    history = [m for m in fresh if seen_at and m.get("date")
+               and int(m["date"]) / 1000 < seen_at - HISTORY_SLACK]
+    if history:
+        old_ids = {m["_id"] for m in history}
+        state["last_id"] = max(last_id, max(int(m["_id"]) for m in history))
+        fresh = [m for m in fresh if m["_id"] not in old_ids
+                 and int(m["_id"]) > int(state["last_id"])]
+        log(f"sms: skipped {len(history)} older texts not seen before "
+            "(phone changed or history restored) — not replying")
+    state["checked_at"] = read_at  # saved with the state below
     replies = state.get("replies", {})
     processed_ok = True
+    started = time.monotonic()
 
     def handled(m):
         # A text skipped on purpose is done: move last_id past it so it is never
@@ -442,16 +470,18 @@ def poll(cfg, log=print):
     for m in fresh:
         if not processed_ok:
             break  # a send failed — retry the remaining messages next poll
+        if time.monotonic() - started > POLL_BUDGET:
+            break  # give the watch loop back (rings); the rest go next poll
         addr, body = m.get("address", ""), (m.get("body") or "").strip()
         if not _is_mobile_number(addr) or not body:
             handled(m)
             continue
-        if not dig(cfg, "sms.reply_to_contacts", False) and _is_contact(addr):
-            log(f"sms: {addr} is a saved contact — personal, not replying")
+        if _too_old(m):  # cheap check first: no adb lookup for old texts
+            log(f"sms: text from {addr} is over 7 days old — not replying")
             handled(m)
             continue
-        if _too_old(m):
-            log(f"sms: text from {addr} is over 7 days old — not replying")
+        if not dig(cfg, "sms.reply_to_contacts", False) and _is_contact(addr):
+            log(f"sms: {addr} is a saved contact — personal, not replying")
             handled(m)
             continue
         try:
