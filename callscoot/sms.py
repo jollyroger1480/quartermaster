@@ -15,6 +15,7 @@ from .agent import SPAM_RE  # noqa: F401  (kept importable)
 from .agent import handoff_reasons, wants_handoff
 from .config import app_home, dig
 from .llm import chat as llm_chat
+from . import pricing
 
 SPAM_SMS_REPLY = "Not interested — please remove this number."
 
@@ -261,7 +262,8 @@ def _stock_matches(cfg, body, limit=5):
         if len(hits) >= 2:
             scored.append((len(hits), title, r.get("price") or ""))
     scored.sort(key=lambda t: -t[0])
-    return [f"- {t} (${p})" for _, t, p in scored[:limit]], True
+    # titles only: pricing is the owner's call, so no listing price reaches the model
+    return [f"- {t}" for _, t, _p in scored[:limit]], True
 
 
 def _system_prompt(cfg, context, stock=None, call_note=""):
@@ -276,7 +278,7 @@ def _system_prompt(cfg, context, stock=None, call_note=""):
 
 ROLE:
 - Junk removal, scrap pickup, e-waste are shop services (see CONTEXT).
-- Answer ONLY from CONTEXT. If it is not in CONTEXT, say {owner} will follow up. Never invent order info, prices, or promises.
+- Answer ONLY from CONTEXT. If it is not in CONTEXT, say {owner} will follow up. Never invent order info or promises.
 - Default English; reply in simple Spanish if the text is in Spanish.
 
 WRITING STYLE:
@@ -286,9 +288,10 @@ WRITING STYLE:
 WHAT YOU CAN DO:
 - The messages below are the whole recent conversation with this texter. Never ask again for something they already told you, and do not repeat a reply you already sent. Once you have their name, the town and (for a vehicle) the title answer, just thank them by name and say {owner} will follow up.
 - If someone offers a vehicle, scrap, or junk for pickup or sale: thank them, then ask for what is still missing out of their name, the town it is in, and whether they have the title (vehicles only). Say {owner} will follow up. Never quote a price or say we will take it.
-- Parts are sold ONLY online, in {store}. STORE LISTINGS below is what a search of the store found for this text. If a listing there is the part they asked about AND names their vehicle or part number, say we have one listed, give its title and price, and tell them to search for it in {store}; say fitment should be confirmed on the listing. If nothing there matches, say you did not find it listed right now and we will get back to them if we find one. If STORE LISTINGS says the store could not be checked, do not say whether we have it; say {owner} will check and follow up. Never promise fitment or hold an item. If they ask about a part but do not say clearly which part (words like "that", "it", "the other one") or do not give the vehicle, do not guess and do not say it is not listed: ask one short question for the part name or part number and the year, make and model. If EARLIER CALL below already gives the vehicle or the part, use it and do not ask again: a part number texted after a call belongs to that request, so confirm you added it to their request and that {owner} will follow up.
+- Parts are sold ONLY online, in {store}. STORE LISTINGS below is what a search of the store found for this text. If a listing there is the part they asked about AND names their vehicle or part number, say we have one listed, give its title, and tell them to search for it in {store}; say fitment should be confirmed on the listing. If nothing there matches, say you did not find it listed right now and we will get back to them if we find one. If STORE LISTINGS says the store could not be checked, do not say whether we have it; say {owner} will check and follow up. Never promise fitment or hold an item. If they ask about a part but do not say clearly which part (words like "that", "it", "the other one") or do not give the vehicle, do not guess and do not say it is not listed: ask one short question for the part name or part number and the year, make and model. If EARLIER CALL below already gives the vehicle or the part, use it and do not ask again: a part number texted after a call belongs to that request, so confirm you added it to their request and that {owner} will follow up.
 
 GUARDRAILS:
+- PRICING IS {owner.upper()}'S CALL ONLY: never state, estimate, compare, negotiate, or confirm a price, a discount, a quote, an offer, what something is worth, or a shipping cost, and never say whether something is cheap, cheaper, or expensive. If asked, say {owner} sets every price, ask for the part, the year, make and model, and their name, and say {owner} will get back to them with a price.
 - Never book or confirm pickup times yourself — say {owner} will call/text to confirm.
 - Never share {owner}'s personal info, address, schedule, or legal matters.
 - Never list orders or anything about another customer. Never send links, take payment details, or promise refunds.
@@ -351,7 +354,7 @@ def _center(node, fallback):
 
 
 def _clean_text(text):
-    # "$" stays so a quoted listing price reads as a price; _adb_shell quotes every argument.
+    # _adb_shell quotes every argument ("$" is kept; the price guard blocks money before here).
     return re.sub(r"[^\w\s.,!?'$-]", "", text).replace("\n", " ").strip()[:300]
 
 
@@ -361,18 +364,17 @@ def _sent_confirmed(rows, before, addr, text):
                and r["body"].startswith(text[:40]) for r in rows)
 
 
-_MONEY = re.compile(r"\$\s?\d[\d,]*(?:\.\d\d)?")
 _PROMISE = re.compile(r"\b(we(?: will|'ll| can)? (?:take|buy|hold|pay|pick)|i(?: will|'ll) (?:take|buy|hold|pay)"
                       r"|guarantee|it will fit|it fits|will fit your|held for you|refund)", re.I)
 
 
-def _unsafe_reply(reply, stock_text):
-    """Why a reply must not go out, or "". Prices may only be ones printed in the
-    store listings shown to the model; buying, holding, fitment and refund promises never go."""
-    allowed = {m.replace(" ", "").replace(",", "") for m in _MONEY.findall(stock_text or "")}
-    for m in _MONEY.findall(reply or ""):
-        if m.replace(" ", "").replace(",", "") not in allowed:
-            return f"price {m} is not a store listing price"
+def _unsafe_reply(reply, stock_text=""):
+    """Why a reply must not go out, or "". No price of any kind goes out (pricing is
+    the owner's call, listing prices included); buying, holding, fitment and refund
+    promises never go. stock_text is kept for callers and no longer allows anything."""
+    money = pricing.price_leak(reply)
+    if money:
+        return f"price: {money}"
     hit = _PROMISE.search(reply or "")
     return f"promise wording: {hit.group(0)}" if hit else ""
 
@@ -534,12 +536,16 @@ def poll(cfg, log=print):
             continue
         # spam is judged on the text itself, before any LLM call (no cost spent on it)
         spam = spamscore.is_spam(body)
+        price_asked = not spam and pricing.asks_price(body)
         if spam:
             reply, provider = SPAM_SMS_REPLY, "spam-guard"
+        elif price_asked:
+            # hard guardrail: pricing is the owner's call, never the model's
+            reply, provider = pricing.handoff_line(cfg, spoken=False), "price-guard"
         else:
             try:
                 context, _ = vault_rag.build_context(cfg, body, only=_context_files(cfg))
-                call_note = _call_note_for_prompt(addr)
+                call_note = pricing.scrub(_call_note_for_prompt(addr))
                 lines, checked = _stock_matches(cfg, body)
                 stock = "\n".join(lines) if lines else (
                     "(searched the store: no matching listing)" if checked
@@ -572,6 +578,11 @@ def poll(cfg, log=print):
         state.pop("brain_fail", None)
         if spam:
             log(f"sms {addr}: spam text — declined without the brain")
+        elif price_asked:
+            log(f"sms {pricing.mask(addr)}: price asked — sent the hand-off line, owner sets the price")
+        elif (hit := pricing.price_leak(reply)):
+            pricing.log_block(cfg, "sms", addr, hit, log)
+            reply, price_asked = pricing.handoff_line(cfg, spoken=False), True
         elif (why := _unsafe_reply(reply, stock)):
             log(f"sms {addr}: reply held back ({why})")
             reply = _follow_up_text(cfg)
@@ -595,5 +606,6 @@ def poll(cfg, log=print):
         notify.send_call_alert(
             cfg, f"SMS {addr}", [("caller", body), ("agent", reply)],
             bool(not spam and wants_handoff(body, owner=owner)), "", log=log,
-            reasons=set() if spam else handoff_reasons(body, owner=owner))
+            reasons=set() if spam else (handoff_reasons(body, owner=owner)
+                                        | ({pricing.PRICE_REQUEST} if price_asked else set())))
     _save_state(state)

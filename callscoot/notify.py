@@ -81,15 +81,19 @@ CALL_KEYBOARD = {
 
 
 def alert_label(cfg, flagged, reasons=None):
-    """Header tag for a flagged alert. A caller who only asked for the owner
-    gets a calm "asked for <owner>"; any other reason (or a flag with no
-    reason given) is an escalation, and escalation wins when both apply."""
-    if not flagged:
-        return ""
+    """Header tag for an alert. A caller who only asked for the owner gets a
+    calm "asked for <owner>"; any other reason (or a flag with no reason
+    given) is an escalation, and escalation wins when both apply. A price
+    request is tagged on any alert, flagged or not: the owner sets the price."""
+    from .pricing import PRICE_REQUEST
     reasons = set(reasons or ())
+    price = " — 💲 PRICE REQUEST: you set the price" if PRICE_REQUEST in reasons else ""
+    reasons.discard(PRICE_REQUEST)
+    if not flagged:
+        return price
     if reasons == {"asked_for_person"}:
-        return f" — asked for {dig(cfg, 'persona.owner', 'the owner')}"
-    return " ⚠️ ESCALATION"
+        return f" — asked for {dig(cfg, 'persona.owner', 'the owner')}{price}"
+    return f" ⚠️ ESCALATION{price}"
 
 
 def send_call_alert(cfg, number, transcript, flagged, transcript_path, log=print,

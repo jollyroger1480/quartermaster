@@ -335,15 +335,23 @@ The bot answers **only** from the folder `vault.root` points at and from your
 config. By default that is the `knowledge/` folder inside the program folder.
 The `.example.md` files there are templates; the bot only reads your copies.
 
-- `knowledge/services.example.md` — copy to `knowledge/services.md` and put your real prices in it
+- `knowledge/services.example.md` — copy to `knowledge/services.md` and put your real services in it
 - anything else you drop in that folder — policies, FAQs, parts notes, whatever
 - optional: wire `[orders]` in the config to a live order export and the bot
   answers "where's my order" from real records, buyer-name matched
 
-If the answer isn't on file, the bot says so and takes a message. It does not
-hallucinate prices to paying customers.
+If the answer isn't on file, the bot says so and takes a message.
 
-How to write the price list, the hours, and the lines the model is not allowed
+**Prices are yours to set.** The bot never states, estimates, negotiates, or
+confirms a price, a discount, a quote, or a shipping cost, on a call or a
+text. A price question gets a fixed hand-off line (`call.price_reply` /
+`sms.price_reply` to change the wording): it takes the part, the vehicle, and
+the name, and says you will get back to them with a price. This is enforced in
+code, not only in the prompt: money amounts are stripped from the notes before
+the model sees them, and any reply that still names a price is replaced with
+the hand-off line and logged. Your alert is tagged `PRICE REQUEST`.
+
+How to write the service notes, the hours, and the lines the model is not allowed
 to rewrite: [Business guardrails](docs/business-guardrails.md).
 
 ## Run it

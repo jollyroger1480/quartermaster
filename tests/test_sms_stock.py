@@ -14,7 +14,7 @@ def test_matching_titles_come_back_best_first(tmp_path):
         "3,Ford F150 Distributor Cap Sold Out,9.99,0\n",
     ])
     lines, checked = sms._stock_matches(cfg, "do you have a distributor cap for a 78 F150")
-    assert checked and lines == ["- 1975-1979 Ford F150 Distributor Cap NOS ($19.99)"]
+    assert checked and lines == ["- 1975-1979 Ford F150 Distributor Cap NOS"]  # no price: owner only
 
 
 def test_no_match_is_a_real_checked_answer(tmp_path):

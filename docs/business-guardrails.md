@@ -1,8 +1,6 @@
 # Business guardrails
 
-The bot answers from two places: a few lines in `callscoot.toml`, and the `.md` files in the folder `vault.root` points at. The chat request sends the shop notes and the caller's words. It does not send a tool list, a web search, or a weather plugin. A price the notes do not contain is a price the bot is told not to say.
-
-Write the number down, or write that there is no set price. A blank line is how a phone bot invents one.
+The bot answers from two places: a few lines in `callscoot.toml`, and the `.md` files in the folder `vault.root` points at. The chat request sends the shop notes and the caller's words. It does not send a tool list, a web search, or a weather plugin. The bot never says a price. Pricing is the owner's call: a price question gets a fixed hand-off line, money amounts are stripped from the notes before the model sees them, and a reply that still names a price is replaced before it goes out.
 
 ## 1. Point the brain at your model
 
@@ -41,7 +39,7 @@ system_extra = ""
 
 Put the shop line a customer is allowed to hear. A home address does not belong here. The call prompt also refuses personal phone, schedule, family, and legal matters.
 
-## 3. The price list
+## 3. The service notes
 
 `vault.root` in the example config is `~/callscoot/knowledge`. Copy the template into that folder and replace the sample lines with yours:
 
@@ -50,20 +48,18 @@ mkdir -p ~/callscoot/knowledge
 cp knowledge/services.example.md ~/callscoot/knowledge/services.md
 ```
 
-A price file the bot can quote looks like this:
+A service file looks like this. It says what to take down, never what it costs:
 
 ```markdown
-# Prices
+# What to take down
 
-Say these numbers exactly. If a line says "no set price", do not invent one.
-
-- Used brake rotor, most cars: $40 plus shipping. Confirm year, make, and model before saying it fits.
-- Scrap metal pickup: free inside Yourtown. No charge.
-- Junk removal: no set price. Take their name, town, and what they have. Anne calls back with the number and the time.
-- Labor: no set price. Anne quotes it.
+- Junk removal: their name, town, and what they have. Anne calls back with the price and the time.
+- Parts: the part, the year, make and model, and a part number if they have one. Anne gets back to them with a price.
 ```
 
-Same rule for anything else you want said out loud: shipping, warranty, "we do not take cards on the phone", which towns you cover. One fact per line. If it is not in this folder, the prompt says to tell the caller the owner will check and follow up.
+Write prices here and they are stripped before the model sees them. The words a caller hears instead are `call.price_reply` and `sms.price_reply` in `callscoot.toml`; leave them out for the default hand-off line.
+
+Same rule for anything else you want said out loud: warranty, "we do not take cards on the phone", which towns you cover. One fact per line. If it is not in this folder, the prompt says to tell the caller the owner will check and follow up.
 
 Drop extra notes in as more `.md` or `.txt` files in that same folder. Policies, fitment notes, a short FAQ. The bot searches them on each turn. It does not browse the web.
 
@@ -73,13 +69,12 @@ Drop extra notes in as more `.md` or `.txt` files in that same folder. Policies,
 
 ```toml
 system_extra = """
-Never quote a dollar amount that is not written in the shop notes.
 Never say a part fits a vehicle unless the notes name that vehicle.
 Do not take card numbers on the phone. Tell them Anne will send a link.
 """
 ```
 
-Texts use the same notes and the same "do not invent a price" rule. They do not read `system_extra`. Put text-facing rules in the markdown too.
+Texts use the same notes and the same no-prices rule, enforced in code. They do not read `system_extra`. Put text-facing rules in the markdown too.
 
 ## 5. Lines the model does not get to rewrite
 
@@ -119,6 +114,6 @@ bin/callscoot ask "what's the weather"
 bin/callscoot ask "what's your home address"
 ```
 
-A rotor with `$40` in the notes should come back as that number. A couch with "no set price" should come back as a callback, not a made-up dollar amount. Weather and a home address should come back as a message for the owner.
+Both price questions should come back as the hand-off line (`[provider: price-guard]`), never a dollar amount. Weather and a home address should come back as a message for the owner.
 
 `ask` does not fire the fixed spam and arrange lines. Those run on a live call only. Read them in `callscoot.toml` and you know exactly what a customer would hear.

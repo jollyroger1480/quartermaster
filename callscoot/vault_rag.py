@@ -180,9 +180,11 @@ URL_RE = re.compile(r"https?://\S+")
 
 
 def redact(text):
-    """Contact-harvest bait never reaches the phone side."""
+    """Contact-harvest bait never reaches the phone side, and neither does any
+    money amount: pricing is the owner's call, so the model has none to repeat."""
+    from .pricing import scrub
     text = URL_RE.sub("[link]", text)
-    return EMAIL_RE.sub("[email]", text)
+    return scrub(EMAIL_RE.sub("[email]", text))
 
 
 def build_context(cfg, query, focus=None, only=None):

@@ -1,17 +1,18 @@
 # Shop services (EXAMPLE — replace with your real services)
 
-This file is what the bot quotes to callers and texters. Copy it to the
-folder `vault.root` points at (the example config uses `~/callscoot/knowledge/services.md`).
-Say a number only when it is written below. A line that says "no set price"
-means take a message. Never invent a price, a date, or a time.
+This file is what the bot tells callers and texters about your services.
+Copy it to the folder `vault.root` points at (the example config uses
+`~/callscoot/knowledge/services.md`).
 
-# Prices
+The bot never gives a price, a discount, or a shipping cost. Money amounts in
+this folder are stripped before the model sees them, and a price question gets
+the hand-off line, so there is no point writing prices here.
 
-- SAMPLE, delete this line: used brake rotor, most cars, $40 plus shipping. Confirm year, make, and model before saying it fits.
-- Scrap metal pickup: free inside Yourtown. No charge.
-- Junk removal: no set price. Take their name, town, and what they have. The owner calls back with the number and the time.
-- E-waste drop-off: no set price. Cheaper than pickup. Owner quotes it.
-- Labor: no set price. Owner quotes it.
+# What to take down
+
+- Junk removal: their name, town, and what they have. The owner calls back with the price and the time.
+- E-waste: drop-off or pickup. The owner calls back with the price.
+- Parts: the part, the year, make and model, and a part number if they have one. The owner gets back to them with a price.
 
 # Services
 

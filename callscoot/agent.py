@@ -14,7 +14,7 @@ import subprocess
 import threading
 import time
 
-from . import audio, llm, phone, spamscore, stt, tts, vault_rag
+from . import audio, llm, phone, pricing, spamscore, stt, tts, vault_rag
 from .config import app_home, dig
 from .controls import (AI_DROP, AI_TAKEOVER, HANGUP, REC_OFF, REC_ON,
                        SAY_TO_CALLER)
@@ -192,13 +192,13 @@ def system_prompt(cfg, context, escalate=False, earlier="", handoff=False):
     p = f"""You are {name} for {shop} (owned by {owner}), speaking on a LIVE PHONE CALL with a customer. Every rule below is a hard rule.
 
 ROLE:
-- THIS PHONE LINE is for scrap metal pickup, junk removal, and e-waste. Help with those. Scrap pickups, junk removal, e-waste recycling, and estimates for that work ARE shop services — answer questions about them freely from CONTEXT (pricing only what CONTEXT shows; if no price is on file, say {owner} quotes each job and offer to set up a callback).
+- THIS PHONE LINE is for scrap metal pickup, junk removal, and e-waste. Help with those. Scrap pickups, junk removal, e-waste recycling, and estimates for that work ARE shop services — answer questions about them from CONTEXT, but never what they cost: {owner} prices every job.
 - Answer ONLY from the SHOP FACTS and CONTEXT sections. You have no other knowledge and no internet. If something is not written there, NEVER state it, confirm it, deny it, or estimate it — say you will check with {owner} and follow up.
 - Language: default to English. If the caller speaks Spanish, reply in simple, friendly Spanish.
 
 SPEAKING STYLE:
-- Spoken style: 1-2 short sentences (a phone caller is waiting). No markdown, no lists, no emojis, no URLs. If SHOP FACTS or CONTEXT states a price, say it in words.
-- Say numbers the way a person says them out loud ("forty dollars", "two thousand eight"), never as symbols or digit strings.
+- Spoken style: 1-2 short sentences (a phone caller is waiting). No markdown, no lists, no emojis, no URLs.
+- Say numbers the way a person says them out loud ("two thousand eight"), never as symbols or digit strings.
 - Ask one question at a time. If they skip it or push back, drop it. Never ask the same question twice.
 - Get straight to their request. Never list what you can do, and never explain how you work.
 - If the caller talks over you, stop and answer what they just said.
@@ -220,6 +220,7 @@ WHAT YOU CAN DO:
 GUARDRAILS:
 - NEVER arrange, schedule, or commit to anything real-world yourself: never confirm a date, time, or appointment. If a caller wants to book a scrap pickup, junk removal, or a pickup appointment, collect their name, location, and what they have, then say {owner} will call back to confirm the time.
 - NEVER quote a part price, condition, or fitment on the phone.
+- PRICING IS {owner.upper()}'S CALL ONLY: never state, estimate, compare, negotiate, or confirm a price, a discount, a quote, an offer, what something is worth, or a shipping cost, not even one written in CONTEXT, and never say whether something is cheap, cheaper, or expensive. If asked, say {owner} sets every price, take the part, the year, make and model, their name, and a callback number, and say {owner} will call or text them back with a price.
 - PRIVACY: never share or confirm {owner}'s personal information — home address, personal phone or email, schedule, whereabouts, family, or legal matters. Business location and shop hours come only from SHOP FACTS; if not there, take a message.
 - Order privacy: only discuss an order after the caller gives the buyer username (or zip) that matches it. Confirm only what they need — never read out full addresses, emails, or phone numbers from an order.
 - Never read out a list of orders, buyers, usernames, totals, or anything about another customer. Only confirm the single order the caller identified themselves with.
@@ -274,6 +275,7 @@ def fixed_lines(cfg):
         dig(cfg, "call.voicemail_reply", f"I'll make sure {owner} follows up with you. Goodbye for now."),
         dig(cfg, "call.farewell", "Thanks for calling, goodbye!"),
         DNC_REPLY,
+        pricing.handoff_line(cfg),
         dig(cfg, "call.brain_down_reply",
             f"Sorry, I can't look that up right now. Please leave your "
             f"name and what you need, and {owner} will call you back."),
@@ -891,7 +893,13 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
                 flag_reasons |= reasons
                 transcript.append(("note", "caller wants a person / frustrated / misheard twice"
                                            " — message offered, no transfer"))
-            if arrange_re(owner).search(caller_text) and not SALVAGE_RE.search(caller_text):
+            if pricing.asks_price(caller_text) and not escalate:
+                # hard guardrail: pricing is the owner's call, never the model's
+                reply = pricing.handoff_line(cfg)
+                provider = "price-guard"
+                flag_reasons.add(pricing.PRICE_REQUEST)
+                transcript.append(("note", "price asked — no price given, owner to call back with one"))
+            elif arrange_re(owner).search(caller_text) and not SALVAGE_RE.search(caller_text):
                 # hard guardrail: never negotiate real-world arrangements, take a message
                 reply = dig(cfg, "call.arrange_reply",
                             f"I'm not able to arrange pickups, visits, or anything like that, "
@@ -933,6 +941,14 @@ def run_session(cfg, number="unknown", log=print, controls=None, join_live=False
                     llm_failures = 0
                     if not handoff:
                         misses += bool(BOT_MISSED_RE.search(reply or ""))
+                    hit = pricing.price_leak(reply)
+                    if hit:
+                        # the model named a price anyway: it never reaches the caller
+                        pricing.log_block(cfg, "call", number, hit, log)
+                        reply = pricing.handoff_line(cfg)
+                        provider = f"{provider}+price-guard"
+                        flag_reasons.add(pricing.PRICE_REQUEST)
+                        transcript.append(("note", "model reply named a price — replaced with the hand-off line"))
             history.append({"role": "user", "content": caller_text})
             history.append({"role": "assistant", "content": reply})
             transcript.append(("agent", reply))

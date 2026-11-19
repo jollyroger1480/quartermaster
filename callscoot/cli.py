@@ -260,10 +260,17 @@ def cmd_ask(cfg, question):
             print(f"  - {s}")
     else:
         print("[context: nothing found in vault]")
-    reply, provider = llm.chat(cfg, [
-        {"role": "system", "content": agent.system_prompt(cfg, context)},
-        {"role": "user", "content": question},
-    ])
+    from . import pricing
+    if pricing.asks_price(question):
+        # same hard guardrail as a live call: pricing is the owner's call
+        reply, provider = pricing.handoff_line(cfg), "price-guard"
+    else:
+        reply, provider = llm.chat(cfg, [
+            {"role": "system", "content": agent.system_prompt(cfg, context)},
+            {"role": "user", "content": question},
+        ])
+        if pricing.price_leak(reply):
+            reply, provider = pricing.handoff_line(cfg), f"{provider}+price-guard"
     print(f"[provider: {provider}]")
     print(reply)
     return 0

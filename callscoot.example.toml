@@ -36,6 +36,7 @@ greeting = "Thanks for calling, this is the shop assistant. How can I help you t
 farewell = "Thanks for calling, have a good one. Goodbye!"
 voicemail_reply = "I'll make sure the owner follows up with you. Goodbye for now."
 arrange_reply = "I can't set up a visit or give out a home address. I'll pass your message to the owner. I've got your number from caller ID."
+# price_reply = "..."     # said instead of any price; default: the owner sets every price and calls back
 spam_reply = "Not interested — please remove this number from your list. Goodbye."
 thinking_cue = true       # soft blip while the bot thinks between turns
 join_reply = "This is the shop assistant — I can help from here."
@@ -186,6 +187,7 @@ alert_on_spam = false
 [sms]
 enabled = true              # answer inbound texts with the same brain
 poll_seconds = 5
+# price_reply = "..."       # texted instead of any price; default: the owner sets every price and gets back to them
 max_replies_per_hour = 4    # per number — loop protection
 reply_to_contacts = false   # false = never bot-reply to numbers saved in the phone's contacts
 max_replies_per_day = 20    # per number

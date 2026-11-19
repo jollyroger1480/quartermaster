@@ -3,8 +3,10 @@ from callscoot import sms
 STOCK = "- Sorensen DR-124 Distributor Cap NOS, $14.99\n- Carlson H5864Q clip kit, $9.00"
 
 
-def test_price_from_a_listing_is_allowed():
-    assert sms._unsafe_reply("We have the Sorensen cap listed at $14.99. Search BuccaneerSalvage on eBay.", STOCK) == ""
+def test_price_from_a_listing_is_held_back_too():
+    # pricing is the owner's call: a listing price is still a price
+    assert "price" in sms._unsafe_reply("We have the Sorensen cap listed at $14.99. Search BuccaneerSalvage on eBay.", STOCK)
+    assert sms._unsafe_reply("We have the Sorensen DR-124 cap listed. Search BuccaneerSalvage on eBay.", STOCK) == ""
 
 
 def test_price_not_in_the_listings_is_held_back():
