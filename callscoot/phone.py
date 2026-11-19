@@ -1,0 +1,247 @@
+"""ADB control path: call state, answer, hangup, dial, unlock."""
+import os
+import re
+import subprocess
+import time
+
+from . import hfp
+from .config import app_home, dig
+
+
+class PhoneError(RuntimeError):
+    pass
+
+
+def adb(args, timeout=15):
+    p = subprocess.run(["adb", *args], capture_output=True, text=True, timeout=timeout)
+    return p.stdout.strip(), p.stderr.strip(), p.returncode
+
+
+def _is_device():
+    out, _, rc = adb(["get-state"])
+    return rc == 0 and out.strip() == "device"
+
+
+def mdns_targets():
+    """Current wireless-debugging endpoints. The port and IP move when Wi-Fi does."""
+    found = []
+
+    def add(target):
+        target = (target or "").strip().strip(";")
+        if target and target not in found:
+            found.append(target)
+
+    out, _, _ = adb(["mdns", "services"], timeout=8)
+    for line in out.splitlines():
+        if "_adb-tls-connect" in line or "_adb-tcp-connect" in line:
+            add(line.rsplit(None, 1)[-1])
+    if found:
+        return found
+    try:
+        p = subprocess.run(
+            ["avahi-browse", "-rpt", "_adb-tls-connect._tcp"],
+            capture_output=True, text=True, timeout=4,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return found
+    for line in (p.stdout or "").splitlines():
+        if not line.startswith("="):
+            continue
+        fields = line.split(";")
+        # =;iface;proto;name;type;domain;hostname;address;port;txt
+        if len(fields) < 9 or not fields[8].strip().isdigit():
+            continue
+        add(f"{fields[7].strip('[]')}:{fields[8].strip()}")
+    return found
+
+
+def adb_up():
+    return _is_device()
+
+
+def phone_mac(cfg):
+    """Bluetooth address of the phone, taken from the configured headset PCM."""
+    m = re.search(r"DEV=([0-9A-Fa-f:]{17})", dig(cfg, "audio.bluealsa_pcm", "") or "")
+    return m.group(1) if m else ""
+
+
+def bt_connect(cfg, timeout=15):
+    """Ask this PC to reconnect Bluetooth to the phone. True when it connected."""
+    mac = phone_mac(cfg)
+    if not mac:
+        return False
+    try:
+        p = subprocess.run(["bluetoothctl", "connect", mac], capture_output=True,
+                           text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return p.returncode == 0 and "Connection successful" in (p.stdout or "")
+
+
+def ensure_connected(cfg):
+    """Calls need the headset link. ADB is only required for texts."""
+    headset = False
+    try:
+        hfp.ping()
+        headset = True
+    except Exception:
+        headset = False
+    if _is_device():
+        return
+    targets = []
+    ip = dig(cfg, "phone.adb_ip", "")
+    port = dig(cfg, "phone.adb_port", 5555)
+    if ip:
+        targets.append(f"{ip}:{port}")
+    for target in mdns_targets():
+        if target not in targets:
+            targets.append(target)
+    for target in targets:
+        adb(["connect", target], timeout=12)
+        if _is_device():
+            return
+    if headset:
+        return
+    raise PhoneError(
+        "Headset call control is down, and wireless debugging is not paired. "
+        "Reconnect the phone in Bluetooth. Texts also need: callscoot adb-connect."
+    )
+
+
+def call_state():
+    """0=idle 1=ringing(incoming) 2=offhook. Headset first, ADB if that link is down."""
+    hfp_err = None
+    try:
+        return hfp.call_state()
+    except Exception as e:
+        hfp_err = e
+    try:
+        return _adb_call_state()
+    except PhoneError as e:
+        raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_call_state():
+    out, err, rc = adb(["shell", "dumpsys", "telephony.registry"])
+    if rc != 0:
+        raise PhoneError(f"dumpsys failed: {err or out}")
+    state, num = None, None
+    m = re.search(r"mCallState=(\d)", out)
+    if m:
+        state = int(m.group(1))
+    m = re.search(r"mCallIncomingNumber=(?:[^:]*:)?([+\d][^\s,]*)", out)
+    if m:
+        num = m.group(1).strip()
+    return {"state": state, "number": num}
+
+
+def answer(cfg=None):
+    try:
+        hfp.answer()
+        return "ATA"
+    except Exception as hfp_err:
+        try:
+            return _adb_answer(cfg)
+        except PhoneError as e:
+            raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_answer(cfg=None):
+    codes = dig(cfg, "phone.answer_keycodes", None) or [
+        "KEYCODE_HEADSETHOOK", "KEYCODE_CALL",
+    ]
+    for code in codes:
+        adb(["shell", "input", "keyevent", code])
+        time.sleep(0.8)
+        if _adb_call_state()["state"] == 2:
+            return code
+    raise PhoneError(
+        "Could not answer while locked (OEM-dependent). Keep screen on while plugged in, "
+        "or answer via `scrcpy` once and retry."
+    )
+
+
+def hangup():
+    try:
+        hfp.hangup()
+        return
+    except Exception as hfp_err:
+        try:
+            _adb_hangup()
+        except PhoneError as e:
+            raise PhoneError(f"{e} (headset control: {hfp_err})") from e
+
+
+def _adb_hangup():
+    for _ in range(3):
+        adb(["shell", "input", "keyevent", "KEYCODE_ENDCALL"])
+        time.sleep(0.7)
+        if _adb_call_state()["state"] != 2:
+            return
+    raise PhoneError("call still offhook after KEYCODE_ENDCALL x3")
+
+
+def dial(cfg, number):
+    out, err, rc = adb(
+        ["shell", "am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{number}"],
+        timeout=20,
+    )
+    if rc != 0:
+        raise PhoneError(f"dial failed: {err or out}")
+
+
+def last10(number):
+    digits = re.sub(r"\D", "", number or "")
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def allowlisted(cfg, number):
+    entries = dig(cfg, "phone.allowlist", []) or []
+    allowed = {last10(e) for e in entries if e}
+    return last10(number) in allowed
+
+
+PIN_FILE = os.path.join(app_home(), ".pin")
+
+
+def keyguard_showing():
+    out, _, _ = adb(["shell", "dumpsys", "window", "policy"])
+    m = re.search(r"showing=(\w+)", out)
+    return (m.group(1).lower() == "true") if m else None
+
+
+def unlock(cfg=None):
+    """Wake + unlock the phone using the saved PIN (for SMS UI automation).
+    Returns True when the keyguard is no longer showing."""
+    adb(["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+    time.sleep(1)
+    if keyguard_showing() is False:
+        return True
+    if not os.path.isfile(PIN_FILE):
+        raise PhoneError("no PIN saved — run: read -s -p 'PIN: ' P && printf '%s' \"$P\" > "
+                         + PIN_FILE + " && chmod 600 " + PIN_FILE)
+    pin = open(PIN_FILE).read().strip()
+    if not pin.isdigit():
+        raise PhoneError("saved PIN is not numeric — refusing to type it")
+    adb(["shell", "input", "swipe", "500", "1500", "500", "300"])
+    time.sleep(1.5)
+    adb(["shell", "input", "text", pin])
+    time.sleep(0.5)
+    adb(["shell", "input", "keyevent", "66"])
+    time.sleep(2)
+    unlocked = keyguard_showing() is False
+    if not unlocked:
+        # fallback: the PIN pad takes taps, not text — press each digit key
+        for d in pin:
+            adb(["shell", "input", "text", d])
+            time.sleep(0.15)
+        adb(["shell", "input", "keyevent", "66"])
+        time.sleep(2)
+        unlocked = keyguard_showing() is False
+    if not unlocked:
+        raise PhoneError("unlock failed — PIN wrong or lockscreen layout unexpected")
+    return True
+
+
+def lock_screen():
+    adb(["shell", "input", "keyevent", "KEYCODE_SLEEP"])

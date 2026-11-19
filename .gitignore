@@ -1,0 +1,37 @@
+# Local config and secrets: never commit these.
+# (git has no end-of-line comments, so each comment sits on its own line.)
+# Your real config: copy callscoot.example.toml instead.
+callscoot.toml
+# Your own model: copy callscoot.llm.example.toml.
+callscoot.llm.toml
+# Your phone's PIN.
+.pin
+.env
+*.env
+!*.env.example
+
+# Runtime state and data (recreated in place)
+# SMS poller checkpoint
+.sms_state
+# Gaming-mode switch
+kokoro.off
+logs/
+leads/
+cache/
+knowledge/*
+!knowledge/services.example.md
+*.ogg
+*.wav
+*.db
+*.sqlite
+*.sqlite3
+*.log
+optional/google-voice/runtime/
+optional/google-voice/data/
+
+# Build and test leftovers
+__pycache__/
+*.pyc
+.pytest_cache/
+vendor/
+.ruff_cache/

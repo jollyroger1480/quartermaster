@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# One-call audio probe for one-way audio (the call is answered but one side hears silence).
+#
+# Waits for the next call's SCO link, logs a 2 Hz timeline (HCI SCO counters,
+# USB isoc alt setting, bluealsa codec / Running / volume / mute, aplay+arecord
+# processes), keeps a btmon HCI trace (eSCO params, AT+BCS / +VGM / +VGS, SCO
+# packet sizes each way), and writes summary.txt ~10 s after the call ends.
+# Read-only: it never sends AT commands and never touches the phone.
+#
+# Usage: bin/callscoot-probe [max_wait_hours=12]
+# Run detached:  systemd-run --user --unit=callscoot-probe bin/callscoot-probe
+set -u
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+APP="$(cd "$(dirname "$SELF")/.." && pwd)"
+WAIT_S=$(( ${1:-12} * 3600 ))
+OUT="$APP/logs/probe_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$OUT"
+TL="$OUT/timeline.log"
+START="$(date '+%Y-%m-%d %H:%M:%S')"
+
+MAC="$(grep -E '^\s*bluealsa_pcm' "$APP/callscoot.toml" | sed -E 's/.*DEV=([0-9A-Fa-f:]+).*/\1/')"
+DEVP="/org/bluealsa/hci0/dev_$(echo "$MAC" | tr ':' '_')/hfphf"
+USBIF="$(readlink -f /sys/class/bluetooth/hci0/device)"   # .../5-1.4:1.0
+ALT="${USBIF%.0}.1/bAlternateSetting"                    # isoc interface 1
+
+echo "probe start $START mac=$MAC out=$OUT" | tee "$OUT/summary.txt"
+
+BTMON_PID=""
+if sudo -n true 2>/dev/null; then
+    sudo -n btmon -w "$OUT/hci.btsnoop" >/dev/null 2>&1 &
+    BTMON_PID=$!
+    echo "btmon pid $BTMON_PID" >> "$OUT/summary.txt"
+else
+    echo "btmon: no passwordless sudo, HCI trace skipped" >> "$OUT/summary.txt"
+fi
+
+stop_btmon() {
+    [ -n "$BTMON_PID" ] && sudo -n kill "$BTMON_PID" 2>/dev/null
+    BTMON_PID=""
+}
+trap 'stop_btmon' EXIT
+
+pcm() {  # one line of the fields that matter for a PCM
+    bluealsactl info "$DEVP/$1" 2>/dev/null \
+        | grep -E '^(Running|Selected codec|Rate|Volume|Mute|SoftVolume):' \
+        | sed -E 's/Selected codec/codec/' | tr '\n' ' '
+}
+
+sco_link() { hcitool con 2>/dev/null | grep -E '\b(e?SCO)\b' | tr -s ' \t' ' '; }
+
+seen=0; gone=0; t0=$(date +%s)
+while :; do
+    link="$(sco_link)"
+    if [ -n "$link" ]; then seen=1; gone=0; fi
+    if [ "$seen" = 1 ]; then
+        cnt="$(hciconfig hci0 | grep -oE '(RX|TX) bytes:[0-9]+ acl:[0-9]+ sco:[0-9]+' | sed -E 's/ bytes:[0-9]+ acl:[0-9]+//' | tr '\n' ' ')"
+        procs="$(pgrep -a -x aplay | sed -E 's/ -D [^ ]+//' ; pgrep -a -x arecord | cut -c1-40)"
+        printf '%s | %s| alt=%s | link=%s | sink: %s| source: %s| procs: %s\n' \
+            "$(date '+%H:%M:%S.%2N')" "$cnt" "$(cat "$ALT" 2>/dev/null)" "${link:-none}" \
+            "$(pcm sink)" "$(pcm source)" "$(echo "$procs" | tr '\n' ';')" >> "$TL"
+        if [ -z "$link" ]; then
+            gone=$((gone + 1))
+            [ "$gone" -ge 20 ] && break      # 10 s after the link dropped
+        fi
+    elif [ $(( $(date +%s) - t0 )) -ge "$WAIT_S" ]; then
+        echo "no call within ${1:-12} h" >> "$OUT/summary.txt"
+        break
+    fi
+    sleep 0.5
+done
+stop_btmon
+sleep 1
+
+{
+    echo; echo "== timeline: first / last in-call lines"
+    head -3 "$TL" 2>/dev/null; echo ...; tail -3 "$TL" 2>/dev/null
+    echo; echo "== callscoot errors.log since probe start (playback lines)"
+    awk -v s="$START" '$1 ~ /^20[0-9][0-9]-/ && ($1" "$2) >= s' "$APP/logs/errors.log" 2>/dev/null \
+        | grep -E 'playback|thinking cue|RINGING|state' | tail -40
+    if [ -s "$OUT/hci.btsnoop" ]; then
+        btmon -r "$OUT/hci.btsnoop" > "$OUT/hci.txt" 2>/dev/null
+        echo; echo "== eSCO link setup (air mode, packet lengths)"
+        grep -A14 -E 'Synchronous Connect(ion)? Complete' "$OUT/hci.txt" | head -60
+        echo; echo "== SCO data packets by direction and length (count dir dlen)"
+        grep -oE 'SCO Data (TX|RX):.*dlen [0-9]+' "$OUT/hci.txt" \
+            | sed -E 's/SCO Data (TX|RX):.*dlen ([0-9]+)/\1 dlen=\2/' | sort | uniq -c
+        echo; echo "== AT codec / gain lines seen in RFCOMM (BCS, BAC, VGM, VGS, CIEV)"
+        grep -oE '(AT\+BCS|\+BCS|AT\+BAC|AT\+BCC|\+VGM|\+VGS|AT\+VGM|AT\+VGS|\+CIEV)[=:][^.]{0,12}' "$OUT/hci.txt" | sort | uniq -c | head -30
+    fi
+    echo; echo "probe end $(date '+%Y-%m-%d %H:%M:%S')"
+} >> "$OUT/summary.txt"
+echo "summary: $OUT/summary.txt"

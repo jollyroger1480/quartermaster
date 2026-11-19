@@ -1,0 +1,199 @@
+# ═══════════════════════════════════════════════════════════════
+#  QUARTERMASTER — configuration
+#  Copy this file to callscoot.toml (same dir) and edit the values.
+#  Every setting below is the full set — anything missing falls back
+#  to code defaults.
+# ═══════════════════════════════════════════════════════════════
+
+[phone]
+# Last known wireless-debugging target. Leave adb_ip empty to discover via
+# mDNS only. A saved address is tried first; if Wi-Fi moved the phone,
+# callscoot finds `_adb-tls-connect` and connects. Pairing is still required
+# after wireless debugging is turned off and on.
+adb_ip = "192.168.1.50"
+adb_port = 5555
+answer_keycodes = ["KEYCODE_HEADSETHOOK", "KEYCODE_CALL"]
+
+# Auto-answer policy (watch mode)
+allowlist = [
+  # "+15551234567",   # always answer these (last 10 digits matched)
+]
+# true = answer every caller (receptionist mode); false = allowlist only
+answer_unknown = true
+# Your own 10-digit number and name: only used by `callscoot dnc-report`
+# (FTC Do Not Call complaints). Leave blank and nothing is sent.
+own_number = ""
+owner_first_name = ""
+owner_last_name = ""
+
+[call]
+ring_delay_s = 3.0        # seconds counted as one ring
+rings = 1                 # how many of those to wait; the panel can change this
+answer_delay_ms = 1200    # wait after answering before the greeting
+max_duration_s = 600      # hard cap per call
+max_turns = 30
+greeting = "Thanks for calling, this is the shop assistant. How can I help you today?"
+farewell = "Thanks for calling, have a good one. Goodbye!"
+voicemail_reply = "I'll make sure the owner follows up with you. Goodbye for now."
+arrange_reply = "I can't set up a visit or give out a home address. I'll pass your message to the owner. I've got your number from caller ID."
+spam_reply = "Not interested — please remove this number from your list. Goodbye."
+thinking_cue = true       # soft blip while the bot thinks between turns
+join_reply = "This is the shop assistant — I can help from here."
+                          # spoken when the bot jumps into a call you already took
+                          # (Telegram 🤖 button, /ai, or the web panel)
+record_all = true         # keep the audio of every call next to its transcript
+recording_notice = "This call may be recorded."   # spoken right after the greeting
+max_calls_per_day = 40    # answer at most this many calls a day (0 = no cap)
+
+[gui]
+# Local panel. callscoot watch serves it on 127.0.0.1 only (not the LAN).
+# TURN SECRETARY OFF stops new answers and leaves the page up.
+# TURN AI ON / OFF only joins or quiets a call already up.
+# Record, reconnect, status, and listen do not start the bot.
+enabled = true
+port = 8795
+
+[alerts]
+telegram = true           # push a digest to Telegram after every message-taking call
+# Where alerts go. Leave empty to use TELEGRAM_HOME_CHANNEL from .env.
+# A private chat id, a group id, or "groupid:topicid" for a forum topic.
+# See README "Setup — Telegram". Do not commit a real id.
+telegram_chat = ""
+# telegram_chat = "123456789"              # DM with your bot
+# telegram_chat = "-1001234567890"         # a group
+# telegram_chat = "-1001234567890:3"       # one forum topic inside that group
+# Inbound Telegram controls (record / AI / hang-up buttons) long-poll your
+# bot's getUpdates — and Telegram allows exactly ONE poller per bot. If
+# anything else already polls this bot (an AI secretary, for example), leave
+# this false or the two will knock each other over with 409 conflicts.
+# Outbound alerts above are send-only and always safe to share.
+telegram_control = false
+
+[audio]
+# bluealsa = bluez-alsa daemon owns HFP (recommended, see scripts/install-bluealsa.sh)
+# pipewire = legacy fallback path
+backend = "bluealsa"
+# Your phone's hands-free PCM — replace with your phone's Bluetooth MAC.
+bluealsa_pcm = "bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=sco"
+# SCO sample rate: 16000 for mSBC, 8000 for CVSD. Playback retries at the other.
+sco_rate = 16000
+# Only used in pipewire mode (auto-discovered from pactl there)
+bt_sink = ""
+bt_source = ""
+sample_rate = 16000       # capture sample rate fed to whisper
+local_mic = "default"     # your own mic for the owner track of call_full recordings
+record_max_s = 14         # max seconds per caller turn
+record_silence_s = 1.5    # caller considered done after this much silence
+record_min_s = 0.45       # ignore sub-this-length blips
+vad_min_rms = 240         # silence threshold floor (raise if BT hiss triggers VAD)
+
+[stt]
+model = "small.en"        # faster-whisper model ("base.en" is faster, "small.en" more accurate)
+language = "en"
+backend = "whisper"       # whisper (local) or grok (xAI, falls back to whisper)
+vad_filter = false
+# grok_token_file = "~/.config/callscoot/grok-token"   # or set XAI_API_KEY
+
+[tts]
+backend = "kokoro"        # kokoro (natural) with piper as automatic fallback
+kokoro_voice = "af_heart"
+kokoro_rate = 24000
+voice = "en_US-amy-medium"    # piper fallback voice in ~/.local/share/piper
+length_scale = 1.0
+sentence_silence = 0.35
+# backend = "grok" uses xAI Grok Voice (falls back to kokoro, then piper)
+# grok_voice = "eve"
+# grok_rate = 16000
+# grok_token_file = "~/.config/callscoot/grok-token"   # or set XAI_API_KEY
+
+[llm]
+# OpenAI-compatible providers, tried top to bottom; first success wins.
+# Keys come from environment variables (see api_key_env) — put them in
+# $CALLSCOOT_HOME/.env and they load automatically.
+max_tokens = 250
+temperature = 0.3
+timeout_s = 20            # per provider; a provider may set its own timeout_s
+
+# Example: Z.ai GLM Flash (cheap, fast)
+[[llm.providers]]
+name = "glm"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+model = "glm-5.3-flash"
+api_key_env = "ZAI_API_KEY"
+extra_body = { thinking = { type = "disabled" } }
+
+# Example: Groq. llama-3.3-70b-versatile left the free tier on 2026-08-16.
+# This program does not send a tool list. Skip groq/compound — that one calls tools.
+[[llm.providers]]
+name = "groq"
+base_url = "https://api.groq.com/openai/v1"
+model = "openai/gpt-oss-20b"
+api_key_env = "GROQ_API_KEY"
+
+# Example: local Ollama (no cloud at all)
+[[llm.providers]]
+name = "ollama"
+base_url = "http://127.0.0.1:11434/v1"
+model = "llama3.1"
+api_key_env = ""
+
+[vault]
+# Where the bot looks for answers: a folder tree of .md/.txt notes.
+# Point this at whatever knowledge base you keep — orders, policies, FAQs.
+root = ""                 # "" = the knowledge/ folder next to this file
+# Sub-folders of `root` to search (empty = search everything)
+lanes = []
+# Extra folders with reference material
+extra_dirs = []
+graphify_dir = ""         # optional: graphify knowledge-graph root, "" to disable
+top_k = 6
+chunk_chars = 700
+
+[orders]
+# OPTIONAL: snapshot live order data into knowledge/ so the bot can answer
+# "where is my order". The eBay fetch needs your own local read-only tool:
+# a folder holding feedback_orders.py with tool_check_orders(). Leave it ""
+# and the eBay fetch simply skips.
+ebay_agent_dir = ""
+ebay_days = 30
+ebay_count = 25
+# square_seen_json = "knowledge/square_seen_orders.json"   # default: knowledge/ next to this file
+# knowledge_dir = "/path/to/knowledge"                      # default: knowledge/ next to this file
+refresh_minutes = 15
+
+[persona]
+shop = "Black Pearl Salvage"        # your shop name
+owner = "Anne"                      # your name — who gets the messages; callers asking for this name get a handoff
+store = ""                          # where parts are sold online, e.g. an eBay store name; "" = "the shop's online store"
+name = "the shop assistant"         # how the bot introduces itself
+# The ONLY hours/address the bot may state. Empty = it punts instead of inventing.
+shop_hours = "By appointment"
+business_address = "Yourtown, ST 00000"
+system_extra = ""                   # extra lines appended to the system prompt
+
+[logs]
+# dir = "/path/to/logs"              # transcripts, audio, errors.log; default: logs/ next to this file
+retention_days = 7                  # call folders older than this are deleted
+
+[spam]
+# Numbers to never answer (last 10 digits matched)
+blacklist = []
+# When the conversation smells like robocall/telemarketer/scam, decline + hang up
+hangup_on_scam = true
+# Skip the Telegram alert for confirmed spam calls (transcript is still saved)
+alert_on_spam = false
+
+[sms]
+enabled = true              # answer inbound texts with the same brain
+poll_seconds = 5
+max_replies_per_hour = 4    # per number — loop protection
+reply_to_contacts = false   # false = never bot-reply to numbers saved in the phone's contacts
+max_replies_per_day = 20    # per number
+# context_files = ["services.md"]   # knowledge/ files the SMS brain may read
+# stock_file = "~/shop/inventory.csv"   # CSV with title, price, qty_available columns; unset = no stock lookups
+
+[leads]
+# Parts calls are saved as a request for the owner (leads/ + a Telegram card).
+enabled = true
+# dir = "/path/to/leads"            # default: leads/ next to this file
+retention_days = 30

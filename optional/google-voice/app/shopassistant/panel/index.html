@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__APP__</title>
+<link rel="icon" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+<style>:root { --accent: __ACCENT__; }</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <div class="brand">
+      <img id="logo" alt="" hidden>
+      <div>
+        <div class="brand-name" id="brandName">__APP__</div>
+        <div class="brand-by" id="brandBy"></div>
+      </div>
+    </div>
+    <button class="nav on" data-page="home">Home</button>
+    <button class="nav" data-page="calls">Calls <span class="count" id="callCount"></span></button>
+    <button class="nav" data-page="business">Your business</button>
+    <button class="nav" data-page="knowledge">What it knows</button>
+    <button class="nav" data-page="try">Try it</button>
+    <button class="nav" data-page="voice">Google Voice</button>
+    <button class="nav" data-page="settings">Settings</button>
+    <div class="rail-foot" id="railFoot"></div>
+  </nav>
+
+  <main>
+    <div class="banner" id="banner" hidden></div>
+
+    <!-- HOME -->
+    <section class="page on" id="page-home">
+      <h1 id="homeTitle">Phone assistant</h1>
+      <div class="switch-card">
+        <button class="power" id="power" aria-pressed="false">
+          <span class="power-knob"></span>
+          <span class="power-text" id="powerText">Off</span>
+        </button>
+        <div class="power-info">
+          <div class="power-state" id="powerState">The assistant is off. Calls ring through as usual.</div>
+          <div class="power-sub" id="powerSub"></div>
+          <label class="check" id="autoWrap"><input type="checkbox" id="autostart"> Start by itself when this computer turns on</label>
+        </div>
+      </div>
+
+      <div id="setupBlock" hidden>
+        <h2>Finish setting up</h2>
+        <ol class="steps" id="steps"></ol>
+      </div>
+
+      <h2 id="recentTitle" hidden>Latest calls</h2>
+      <div class="slips" id="recent"></div>
+    </section>
+
+    <!-- CALLS -->
+    <section class="page" id="page-calls">
+      <h1>Calls</h1>
+      <p class="lede">Every call the assistant answered, newest first. Open one to read the conversation and hear the recording.</p>
+      <div class="slips" id="callList"></div>
+      <div class="empty" id="callsEmpty" hidden>No calls yet. Turn the assistant on and call your Google Voice number from another phone.</div>
+    </section>
+
+    <!-- BUSINESS -->
+    <section class="page" id="page-business">
+      <h1>Your business</h1>
+      <p class="lede">The assistant introduces itself and answers with these details. Leave a box empty and it won't mention that thing.</p>
+      <form id="bizForm" class="form">
+        <div class="row2">
+          <label>Business name<input name="persona.shop" placeholder="Northside Auto Repair"></label>
+          <label>Your first name<input name="persona.owner" placeholder="Sam"></label>
+        </div>
+        <label>What the business does, in a sentence or two
+          <textarea name="persona.about" rows="2" placeholder="Brake, suspension and general repair on cars and light trucks."></textarea></label>
+        <label>Hours, as you'd say them
+          <input name="persona.shop_hours" placeholder="Monday to Friday, 8 to 5, closed weekends"></label>
+        <div class="row2">
+          <label>Address callers may be given <span class="opt">optional</span><input name="persona.business_address"></label>
+          <label>Website <span class="opt">optional</span><input name="persona.website" placeholder="northsideauto.example"></label>
+        </div>
+        <div class="row2">
+          <label>Email callers may be given <span class="opt">optional</span><input name="persona.contact_email" type="email"></label>
+          <label>Another number that takes texts <span class="opt">optional</span><input name="persona.alt_text_number" placeholder="555-010-0199"></label>
+        </div>
+        <fieldset>
+          <legend>How do you get back to callers?</legend>
+          <label class="radio"><input type="radio" name="persona.reply_by" value="text"> By text or email. It never promises a phone call.</label>
+          <label class="radio"><input type="radio" name="persona.reply_by" value="call"> With a phone call.</label>
+          <label class="radio"><input type="radio" name="persona.reply_by" value="either"> Either. It asks the caller which they prefer.</label>
+        </fieldset>
+        <label>Details to collect before it hands a question to you
+          <input name="persona.collect_details" placeholder="their name, the year, make and model, and what they need done"></label>
+        <label>Greeting <span class="opt">leave empty to use the one below</span>
+          <textarea name="call.greeting" rows="2"></textarea></label>
+        <p class="hint" id="greetHint"></p>
+        <label>Words it should recognise <span class="opt">names, brands and trade terms callers say</span>
+          <textarea name="stt.initial_prompt" rows="2" placeholder="Sam, Northside, alternator, caliper, strut, Camry"></textarea></label>
+        <label>Extra rules <span class="opt">optional, in plain words</span>
+          <textarea name="persona.system_extra" rows="3" placeholder="We don't work on diesels. Never quote tire prices."></textarea></label>
+        <div class="actions">
+          <button class="btn primary" type="submit">Save changes</button>
+          <button class="btn" type="button" id="hearGreeting">Hear the greeting</button>
+          <span class="saved" id="bizSaved"></span>
+        </div>
+      </form>
+    </section>
+
+    <!-- KNOWLEDGE -->
+    <section class="page" id="page-knowledge">
+      <h1>What it knows</h1>
+      <p class="lede">The assistant may only tell callers what's written here. Anything missing becomes “I'll have you get back to them”. Write it like you'd brief a new employee: services, prices, how to order, and the questions you answer every day.</p>
+      <div class="kbar">
+        <select id="kFile" aria-label="File"></select>
+        <button class="btn" id="kNew" type="button">New file</button>
+        <span class="warn-inline" id="kWarn" hidden>Still has [FILL IN] parts. Sections with a [FILL IN] are never read to callers.</span>
+      </div>
+      <textarea id="kText" class="editor" spellcheck="true" aria-label="Knowledge text"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="kSave" type="button">Save</button>
+        <span class="saved" id="kSaved"></span>
+      </div>
+    </section>
+
+    <!-- TRY -->
+    <section class="page" id="page-try">
+      <h1>Try it</h1>
+      <p class="lede">Type what a caller would say and see what the assistant answers. Nothing is sent anywhere and no phone rings.</p>
+      <div class="chat" id="chat"></div>
+      <form class="chat-in" id="chatForm">
+        <input id="chatText" placeholder="How much is a brake job on a 2015 F-150?" autocomplete="off">
+        <button class="btn primary" type="submit">Ask</button>
+        <button class="btn" type="button" id="chatClear">Start over</button>
+      </form>
+    </section>
+
+    <!-- VOICE -->
+    <section class="page" id="page-voice">
+      <h1>Google Voice</h1>
+      <p class="lede">The assistant answers calls to a Google Voice number through its own browser window. Your normal browser and Google account stay untouched.</p>
+      <ol class="howto">
+        <li><strong>Get a Google Voice number</strong> if you don't have one, at voice.google.com. To use it for your shop line, forward your shop number to it or give it out directly.</li>
+        <li><strong>Sign in.</strong> Press the button, sign in to Google in the window that opens, open Voice, then close that window.
+          <div class="actions"><button class="btn primary" id="vSignin" type="button">Sign in to Google Voice</button></div></li>
+        <li><strong>Check two Voice settings</strong> (gear icon, Calls): calls ring on <em>Web</em>, and <em>Screen calls</em> is off.</li>
+        <li><strong>Turn the assistant on</strong> from Home. The Voice window opens by itself and must stay open; you can minimise it.</li>
+      </ol>
+      <p class="note" id="vNote"></p>
+      <h2>Good to know</h2>
+      <ul class="plain">
+        <li>If you answer on your own phone before the assistant's pickup delay runs out, it stays out of the call.</li>
+        <li>Calls are recorded on this computer. Some states require telling callers; add “Calls may be recorded” to your greeting if that applies to you.</li>
+        <li>Google doesn't offer an official way to automate Voice. This drives the web page, so a Google redesign can stop it answering until it is updated, and Google's terms restrict automated use.</li>
+      </ul>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="page-settings">
+      <h1>Settings</h1>
+
+      <h2>AI service</h2>
+      <p class="lede">The assistant's answers come from an AI service. Groq has a free plan: create a key at console.groq.com (API Keys, Create API Key) and paste it here. The key stays on this computer.</p>
+      <form class="form" id="keyForm">
+        <div class="row-inline">
+          <label class="grow">API key<input id="keyInput" type="password" placeholder="gsk_…" autocomplete="off"></label>
+          <button class="btn primary" type="submit">Save and test</button>
+        </div>
+        <p class="hint" id="keyStatus"></p>
+        <details>
+          <summary>Use a different AI service</summary>
+          <div class="row2">
+            <label>Address<input id="aiBase"></label>
+            <label>Model<input id="aiModel"></label>
+          </div>
+          <label>Backup model<input id="aiBackup"></label>
+          <button class="btn" type="button" id="aiSave">Save AI service</button>
+        </details>
+      </form>
+
+      <h2>Call handling</h2>
+      <form class="form" id="tuneForm">
+        <div class="row2">
+          <label>Seconds to ring before it picks up<input type="number" min="0" max="25" step="1" name="call.ring_delay_s"></label>
+          <label>Pause that ends a caller's turn (seconds)<input type="number" min="0.6" max="2.5" step="0.1" name="audio.record_silence_s"></label>
+        </div>
+        <div class="row2">
+          <label>Listening model
+            <select name="stt.model">
+              <option value="tiny.en">tiny.en - fastest, least accurate</option>
+              <option value="base.en">base.en - good on most computers</option>
+              <option value="small.en">small.en - more accurate, needs a fast computer</option>
+            </select></label>
+          <label>Voice
+            <select name="tts.kokoro_voice">
+              <option value="af_heart">Heart (female)</option>
+              <option value="af_bella">Bella (female)</option>
+              <option value="af_nicole">Nicole (female)</option>
+              <option value="am_michael">Michael (male)</option>
+              <option value="am_fenrir">Fenrir (male)</option>
+              <option value="am_puck">Puck (male)</option>
+            </select></label>
+        </div>
+        <label class="check"><input type="checkbox" name="audio.barge_in"> Callers can interrupt it while it's talking</label>
+        <label class="check"><input type="checkbox" name="sms.enabled"> Also reply to text messages <span class="opt">experimental; off is safer</span></label>
+        <div class="actions">
+          <button class="btn primary" type="submit">Save changes</button>
+          <span class="saved" id="tuneSaved"></span>
+        </div>
+        <p class="hint">Changes apply from the next call. A new listening model or voice applies after you turn the assistant off and on.</p>
+      </form>
+
+      <h2>Checks</h2>
+      <div class="actions">
+        <button class="btn" id="runChecks" type="button">Check everything</button>
+        <button class="btn" id="runBench" type="button">Test this computer's speed</button>
+      </div>
+      <div id="checks"></div>
+      <pre class="out" id="benchOut" hidden></pre>
+
+      <h2>Activity log</h2>
+      <pre class="out log" id="log"></pre>
+      <p class="about" id="about"></p>
+    </section>
+  </main>
+</div>
+
+<dialog id="callDlg">
+  <div class="dlg-head"><h2 id="dlgTitle"></h2><button class="btn" id="dlgClose" type="button">Close</button></div>
+  <div id="dlgBody"></div>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>window.TOKEN = "__TOKEN__";</script>
+<script src="app.js"></script>
+</body>
+</html>

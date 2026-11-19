@@ -1,0 +1,50 @@
+{
+  "about": "Held-out cases: written before the rule changes and NOT used while tuning them. Varied phrasing, speech-to-text slips, short texts. Same format as tuning.json.",
+  "cases": [
+    {"id": "h-call-01", "source": "rule", "classifier": "call_spam", "input": ["hello this is an automated call regarding your auto warranty coverage"], "label": true},
+    {"id": "h-call-02", "source": "rule", "classifier": "call_spam", "input": ["we noticed your google maps listing is unverified press one to speak with a specialist"], "label": true},
+    {"id": "h-call-03", "source": "rule", "classifier": "call_spam", "input": ["this call is from the internal revenue service a lawsuit has been filed"], "label": true},
+    {"id": "h-call-04", "source": "rule", "classifier": "call_spam", "input": ["your vehicles factory warrant he is about to expire"], "label": true, "note": "speech-to-text slip for 'warranty'"},
+    {"id": "h-call-05", "source": "rule", "classifier": "call_spam", "input": ["Hi it's Jessica from the small business funding center, you're pre-approved for a line of credit"], "label": true},
+    {"id": "h-call-06", "source": "rule", "classifier": "call_spam", "input": ["This is your final attempt to lower your credit card interest rates"], "label": true},
+    {"id": "h-call-07", "source": "rule", "classifier": "call_spam", "input": ["uh hi this is Dan I need a tailgate for a 2003 Dodge Ram"], "label": false},
+    {"id": "h-call-08", "source": "rule", "classifier": "call_spam", "input": ["can you hear me OK? I got a junk car to get rid of"], "label": false},
+    {"id": "h-call-09", "source": "rule", "classifier": "call_spam", "input": ["hello? hello?"], "label": false},
+    {"id": "h-call-10", "source": "rule", "classifier": "call_spam", "input": ["I'm calling from Penn Auto, we need a core for a 4L60E, you got one?"], "label": false},
+    {"id": "h-call-11", "source": "rule", "classifier": "call_spam", "input": ["yeah my cousin said you guys buy catalytic converters"], "label": false},
+    {"id": "h-call-12", "source": "rule", "classifier": "call_spam", "input": ["you have been chosen to receive a complimentary vacation package"], "label": true},
+    {"id": "h-call-13", "source": "rule", "classifier": "call_spam", "input": ["Press 9 to be removed from our list"], "label": true},
+    {"id": "h-call-14", "source": "rule", "classifier": "call_spam", "input": ["this message is for the business owner regarding your merchant processing fees"], "label": true},
+
+    {"id": "h-gate-01", "source": "rule", "classifier": "robocall_gate", "input": ["hello this is an automated call regarding your auto warranty coverage"], "label": true},
+    {"id": "h-gate-02", "source": "rule", "classifier": "robocall_gate", "input": ["uh hi this is Dan I need a tailgate for a 2003 Dodge Ram"], "label": false},
+
+    {"id": "h-esc-01", "source": "rule", "classifier": "escalate", "input": "the mirror came in cracked", "label": true},
+    {"id": "h-esc-02", "source": "rule", "classifier": "escalate", "input": "I still haven't gotten my package and it's been two weeks", "label": true},
+    {"id": "h-esc-03", "source": "rule", "classifier": "escalate", "input": "you guys charged me twice", "label": true},
+    {"id": "h-esc-04", "source": "rule", "classifier": "escalate", "input": "can you cancel that order I placed this morning", "label": true},
+    {"id": "h-esc-05", "source": "rule", "classifier": "escalate", "input": "I want my money back", "label": true},
+    {"id": "h-esc-06", "source": "rule", "classifier": "escalate", "input": "my truck was damaged by a deer, I need a hood", "label": false},
+    {"id": "h-esc-07", "source": "rule", "classifier": "escalate", "input": "there's an issue with the year on my part number", "label": false},
+    {"id": "h-esc-08", "source": "rule", "classifier": "escalate", "input": "do you have a headlight for a 2012 Camry", "label": false},
+
+    {"id": "h-end-01", "source": "rule", "classifier": "end", "input": "alright, thank you, bye bye", "label": true},
+    {"id": "h-end-02", "source": "rule", "classifier": "end", "input": "don't hang up yet", "label": false},
+    {"id": "h-end-03", "source": "rule", "classifier": "end", "input": "I'll take care of that tonight", "label": false},
+    {"id": "h-end-04", "source": "rule", "classifier": "end", "input": "okay see ya", "label": true},
+
+    {"id": "h-arr-01", "source": "rule", "classifier": "arrange", "input": "could I stop by your place tonight", "label": true},
+    {"id": "h-arr-02", "source": "rule", "classifier": "arrange", "input": "I visited your eBay page yesterday", "label": false},
+
+    {"id": "h-sms-01", "source": "rule", "classifier": "sms_spam", "input": "URGENT: your package is on hold, confirm your details at the link", "label": true},
+    {"id": "h-sms-02", "source": "rule", "classifier": "sms_spam", "input": "Reply STOP to unsubscribe. You've won a free iPhone", "label": true},
+    {"id": "h-sms-03", "source": "rule", "classifier": "sms_spam", "input": "u have a alternator 2009 impala", "label": false},
+    {"id": "h-sms-04", "source": "rule", "classifier": "sms_spam", "input": "how much u pay for scrap cars", "label": false},
+    {"id": "h-sms-05", "source": "rule", "classifier": "sms_spam", "input": "k thx", "label": false},
+    {"id": "h-sms-06", "source": "rule", "classifier": "sms_spam", "input": "Hi, I'm with ABC Marketing, we help junk removal businesses get more leads", "label": true},
+    {"id": "h-sms-07", "source": "rule", "classifier": "sms_spam", "input": "Your Google listing is about to expire, call now", "label": true},
+
+    {"id": "h-parts-01", "source": "rule", "classifier": "parts_gate", "input": ["need a front bumper cover for an 07 accord"], "label": true},
+    {"id": "h-parts-02", "source": "rule", "classifier": "parts_gate", "input": ["got a thermostat housing for a 5.3"], "label": true}
+  ]
+}

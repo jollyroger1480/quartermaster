@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# callscoot launcher — works from any install location (symlinks resolved).
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+APP_DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
+export CALLSCOOT_HOME="${CALLSCOOT_HOME:-$APP_DIR}"
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$APP_DIR"
+exec python3 -m callscoot "$@"
