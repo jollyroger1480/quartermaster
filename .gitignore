@@ -17,6 +17,8 @@ callscoot.llm.toml
 kokoro.off
 logs/
 leads/
+calls/
+vault/
 cache/
 knowledge/*
 !knowledge/services.example.md
@@ -35,3 +37,6 @@ __pycache__/
 .pytest_cache/
 vendor/
 .ruff_cache/
+*.bak
+*.orig
+*~

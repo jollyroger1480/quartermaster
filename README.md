@@ -48,21 +48,45 @@ from live data, takes messages with callback details, hangs up on "bye",
 declines scam scripts mid-sentence, and never promises refunds, dates, or
 your home address.
 
-**Parts calls** — a caller hunting for a part gets taken properly: the
-receptionist collects the year, make/model, engine, and exactly which
-part(s), then promises a callback with a price. **Stock is never
-discussed** — the bot never says the shop does or doesn't have a part; the
-only availability answer is "let me check our inventory and we'll get
-right back to you." Prices are quoted only from your price file, never
-invented.
+**Parts calls** — a caller hunting for a part gets written down properly:
+year, make, model, the part, a part number if they have one (asked to text
+it so it is not misheard), and a callback number. It reads the request back
+and says the shop will get back to them if one turns up. It never quotes a
+price, condition, fitment, or a time on the phone. The request is saved to
+`leads/` (`callscoot leads` lists the open ones) and sent to you as a card.
 
 **Texts** — reads every incoming SMS over ADB, replies with the same brain,
 loop-protected and contact-aware (saved contacts = personal, never
-bot-replied).
+bot-replied). Per-number hourly and daily reply caps. An optional stock CSV
+(`sms.stock_file`) lets it point a texter at a matching listing.
 
 **For the owner** — Telegram alert after every call or text that took a
 message: the number, what they wanted, escalation flag if it smelled like a
-dispute or damage. Audio + transcript archived per call (`logs/`).
+dispute or damage. Audio + transcript archived per call (`logs/`). A caller
+who asks for you by name ("is Sam there?") or is fed up with the bot gets a
+fast way out: the bot offers to take a message and the alert is flagged for
+you personally.
+
+**Live call controls** — while a call is up, the bench panel and the
+Telegram alert card have buttons to record, let the AI join or step back,
+and hang up. A plain message you type in the alert chat during a call is
+spoken to the caller.
+
+**Spam and robocalls** — one scored check (scripted sales and scam phrases
+against customer words) declines and hangs up on robocalls and
+telemarketers, on calls and texts alike. After the call a second check
+confirms it before a record is kept (`callscoot robocalls`).
+`python3 -m callscoot.dnc_report` can file a saved record with the FTC Do
+Not Call form; it is a dry run unless you pass `--send`, and it needs
+`phone.own_number`.
+
+**Caller memory, safely** — a repeat caller's prompt gets the topic of
+their last call and how many times the number texted lately, never the text
+of those messages, because caller ID can be spoofed.
+
+**Retention** — call audio and transcripts are deleted after
+`logs.retention_days` (7 in the example) and part requests after
+`leads.retention_days` (30). `callscoot prune` runs it by hand.
 
 **Gaming mode** — one click (or `callscoot gaming on`) drops the heavyweight
 voice model and swaps to a featherweight one so a 6 PM call never taxes your
@@ -246,7 +270,9 @@ change the model or the shop notes and want to hear what it will say.
 
 Calls and texts still get answered, and the transcript still lands in
 `logs/`, if Telegram is not set up. The digest on your phone is a separate
-step. Quartermaster only **sends**. It does not read your Telegram chats.
+step. Quartermaster posts alerts, and it reads only one chat: the alert chat
+you configure, for the call-control buttons and the lines you type to a
+caller during a call. Messages from any other chat are ignored.
 
 1. Install Telegram on the phone that should get the alerts. That can be the
    shop phone or any other phone you carry.
@@ -348,6 +374,14 @@ journalctl --user -u callscoot-watch -f
 | `callscoot index` | refresh the order snapshots |
 | `callscoot gaming on/off` | drop the heavy voice model, switch to piper |
 | `callscoot unlock` | wake + unlock the phone (saved PIN) |
+| `callscoot gui` | open the bench panel (watch must be running) |
+| `callscoot leads` | list open part requests (also in `leads/open-leads.md`) |
+| `callscoot robocalls` | list saved robocall / telemarketer records, newest first |
+| `callscoot prune` | delete recordings, transcripts and old leads past their retention |
+| `callscoot llm-add` | add an OpenAI-compatible model and try it first |
+| `callscoot answer` / `hangup` | answer or end the current call by hand |
+| `callscoot agent` | hand the current ringing or active call to the receptionist |
+| `callscoot talk` | talk to the caller yourself through the PC mic and speakers |
 | `callscoot watch` | THE switch — live receptionist |
 
 ## Configuration
@@ -362,12 +396,29 @@ Everything lives in `callscoot.toml` — full annotated reference in
 | `record_silence_s` | pause length before the bot thinks it's her turn (1.5 = patient) |
 | `tts.backend` | `kokoro` (natural) or `piper` (featherweight) |
 | `persona.shop_hours` | the ONLY hours it may speak — empty = it punts instead of inventing |
+| `persona.store` | where parts are sold (your online store), as the bot should say it |
 | `spam.blacklist` | numbers never answered |
+| `spam.hangup_on_scam` | decline and hang up when a call sounds like a robocall or scam |
+| `logs.retention_days` | days call audio and transcripts are kept |
+| `leads.enabled` | save parts calls as part requests |
+| `phone.own_number` | your shop number; only used by the Do Not Call report |
 | `alerts.telegram` | `true` sends the digest; `false` keeps transcripts local only |
 | `alerts.telegram_chat` | chat id, or `chatid:topicid`; empty uses `TELEGRAM_HOME_CHANNEL` |
 
 Keys go in `.env` (git-ignored): `GROQ_API_KEY`, `ZAI_API_KEY`,
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_HOME_CHANNEL`. See **Setup — Telegram**.
+
+## Tests
+
+The suite needs only `pytest` and `requests`, no phone, no models, no keys:
+
+```bash
+pip install --user --break-system-packages pytest requests
+python3 -m pytest -q tests
+```
+
+The tests run in a throwaway home folder, so they never touch your
+`callscoot.toml`, `logs/` or `knowledge/`.
 
 ## Troubleshooting (the traps we fell into so ye don't have to)
 
